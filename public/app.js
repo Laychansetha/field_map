@@ -32,18 +32,24 @@
 
   // --- Subplot Inspection State ---
   const SUBPLOTS_STORAGE_KEY = 'ibis_inspection_subplots_v1';
+  const DIVISION_LINES_STORAGE_KEY = 'ibis_plot_division_lines_v1';
   let subplots = []; // Array of saved subplots
+  let divisionLines = {}; // { [plotId]: [ [[lat,lng], ...], ... ] }
   let subplotsLayerGroup = null; // Leaflet LayerGroup for rendered subplots
+  let divisionLinesLayerGroup = null; // Leaflet LayerGroup for division lines
   let isDrawingSubplot = false;
   let drawingMainPlot = null;
-  let drawingPoints = []; // Array of [lat, lng]
-  let drawingMarkers = []; // Array of L.circleMarker
-  let drawingLine = null; // L.polyline (open preview path)
-  let drawingClosingLine = null; // L.polyline (closing segment back to first point)
-  let drawingPreviewPoly = null; // L.polygon (filled preview)
+  let drawingMode = 'line'; // 'line' | 'label'
+  let isMouseDownDrawing = false;
+  let currentStrokePoints = [];
+  let tempStrokeLayer = null;
+  let pendingClickPoint = null;
+  let pendingClickMarker = null;
+  let pendingSubplotLatLng = null;
+  let drawingUndoStack = []; // [{ type: 'line', lineData, layers }, { type: 'subplot', subplot, marker }]
+  let drawingSessionLayers = []; // layers created in current drawing session
   let drawingBoundaryRings = []; // [[lat,lng], ...] rings of main plot for containment check
   let mainPlotGuideLayer = null; // highlighted boundary guide while drawing
-  let currentSubplotCalc = null; // { ha, m2, pct }
   let isFullscreenDrawing = false; // whether header is hidden
 
   // --- DOM Elements ---
@@ -97,6 +103,8 @@
   const drawingHud = document.getElementById('drawing-hud');
   const drawingTargetLabel = document.getElementById('drawing-target-label');
   const drawingPointsCount = document.getElementById('drawing-points-count');
+  const btnModeDrawLine = document.getElementById('btn-mode-draw-line');
+  const btnModeAddLabel = document.getElementById('btn-mode-add-label');
   const btnUndoPoint = document.getElementById('btn-undo-point');
   const btnFinishDrawing = document.getElementById('btn-finish-drawing');
   const btnCancelDrawing = document.getElementById('btn-cancel-drawing');
@@ -111,9 +119,8 @@
   const btnCloseModal = document.getElementById('btn-close-modal');
   const btnCancelModal = document.getElementById('btn-cancel-modal');
   const modalPlotRef = document.getElementById('modal-plot-ref');
-  const modalCalcHa = document.getElementById('modal-calc-ha');
-  const modalCalcM2 = document.getElementById('modal-calc-m2');
-  const modalCalcPct = document.getElementById('modal-calc-pct');
+  const subplotAreaHa = document.getElementById('subplot-area-ha');
+  const subplotAreaPct = document.getElementById('subplot-area-pct');
   const subplotCode = document.getElementById('subplot-code');
   const subplotVariety = document.getElementById('subplot-variety');
   const customVarietyGroup = document.getElementById('custom-variety-group');
@@ -162,7 +169,7 @@
     }
   }
 
-  // --- Subplots Local Storage ---
+  // --- Subplots & Division Lines Local Storage ---
   function loadStoredSubplots() {
     try {
       const data = localStorage.getItem(SUBPLOTS_STORAGE_KEY);
@@ -170,18 +177,25 @@
         subplots = JSON.parse(data);
         console.log(`[Subplots] Loaded ${subplots.length} subplots from storage.`);
       }
+      const linesData = localStorage.getItem(DIVISION_LINES_STORAGE_KEY);
+      if (linesData) {
+        divisionLines = JSON.parse(linesData);
+        console.log(`[Subplots] Loaded division lines from storage.`);
+      }
     } catch (e) {
-      console.warn('[Subplots] Failed to load subplots:', e);
+      console.warn('[Subplots] Failed to load subplots or division lines:', e);
       subplots = [];
+      divisionLines = {};
     }
   }
 
   function saveStoredSubplots() {
     try {
       localStorage.setItem(SUBPLOTS_STORAGE_KEY, JSON.stringify(subplots));
+      localStorage.setItem(DIVISION_LINES_STORAGE_KEY, JSON.stringify(divisionLines));
     } catch (e) {
-      console.error('[Subplots] Failed to save subplots:', e);
-      showToast('Error saving subplot to browser storage');
+      console.error('[Subplots] Failed to save subplots or division lines:', e);
+      showToast('Error saving data to browser storage');
     }
   }
 
@@ -216,13 +230,62 @@
       { maxZoom: 19 }
     );
 
-    // Layer group for rendered subplots (drawn on top of plots)
+    // Layer groups for rendered subplots and separation lines
+    divisionLinesLayerGroup = L.layerGroup().addTo(map);
     subplotsLayerGroup = L.layerGroup().addTo(map);
 
-    // Map click handler (for subplot drawing)
+    // Map drawing handlers (mouse + touch)
+    map.on('mousedown', (e) => {
+      if (isDrawingSubplot && drawingMode === 'line') {
+        handleMapDrawPointerDown(e.latlng);
+      }
+    });
+
+    map.on('mousemove', (e) => {
+      if (isDrawingSubplot && drawingMode === 'line' && isMouseDownDrawing) {
+        handleMapDrawPointerMove(e.latlng);
+      }
+    });
+
+    map.on('mouseup', () => {
+      if (isDrawingSubplot && drawingMode === 'line' && isMouseDownDrawing) {
+        handleMapDrawPointerUp();
+      }
+    });
+
     map.on('click', (e) => {
       if (isDrawingSubplot) {
-        addDrawingPoint(e.latlng);
+        handleDrawingClick(e.latlng);
+      }
+    });
+
+    // Touch events on map container for mobile field devices
+    const mapEl = document.getElementById('map');
+    mapEl.addEventListener('touchstart', (e) => {
+      if (isDrawingSubplot && drawingMode === 'line' && e.touches.length === 1) {
+        const touch = e.touches[0];
+        const point = map.mouseEventToContainerPoint(touch);
+        const latlng = map.containerPointToLatLng(point);
+        if (isInsideMainPlot(latlng.lat, latlng.lng)) {
+          e.preventDefault();
+          handleMapDrawPointerDown(latlng);
+        }
+      }
+    }, { passive: false });
+
+    mapEl.addEventListener('touchmove', (e) => {
+      if (isDrawingSubplot && drawingMode === 'line' && isMouseDownDrawing && e.touches.length === 1) {
+        e.preventDefault();
+        const touch = e.touches[0];
+        const point = map.mouseEventToContainerPoint(touch);
+        const latlng = map.containerPointToLatLng(point);
+        handleMapDrawPointerMove(latlng);
+      }
+    }, { passive: false });
+
+    mapEl.addEventListener('touchend', () => {
+      if (isDrawingSubplot && drawingMode === 'line' && isMouseDownDrawing) {
+        handleMapDrawPointerUp();
       }
     });
 
@@ -298,7 +361,7 @@
           // Click on plot polygon
           layer.on('click', (e) => {
             if (isDrawingSubplot) {
-              addDrawingPoint(e.latlng);
+              handleDrawingClick(e.latlng);
               return;
             }
             L.DomEvent.stopPropagation(e);
@@ -507,21 +570,123 @@
     }
   }
 
-  // --- Subplot Drawing Workflow (Fullscreen Mode) ---
+  // --- Subplot Separation & Labeling Workflow (Fullscreen Mode) ---
+
+  // Segment-Segment Intersection (coordinates in [lat, lng])
+  function getSegmentIntersection(p1, p2, p3, p4) {
+    const x1 = p1[1], y1 = p1[0]; // lng, lat
+    const x2 = p2[1], y2 = p2[0];
+    const x3 = p3[1], y3 = p3[0];
+    const x4 = p4[1], y4 = p4[0];
+
+    const denom = (y4 - y3) * (x2 - x1) - (x4 - x3) * (y2 - y1);
+    if (Math.abs(denom) < 1e-12) return null; // Parallel or collinear
+
+    const ua = ((x4 - x3) * (y1 - y3) - (y4 - y3) * (x1 - x3)) / denom;
+    const ub = ((x2 - x1) * (y1 - y3) - (y2 - y1) * (x1 - x3)) / denom;
+
+    if (ua >= 0 && ua <= 1 && ub >= 0 && ub <= 1) {
+      const intLat = y1 + ua * (y2 - y1);
+      const intLng = x1 + ua * (x2 - x1);
+      return [intLat, intLng, ua];
+    }
+    return null;
+  }
+
+  // Clip polyline coordinates so they strictly stay inside main plot boundary
+  function clipPolylineToMainPlot(rawPoints) {
+    if (!rawPoints || rawPoints.length < 2) return null;
+    if (!drawingBoundaryRings || drawingBoundaryRings.length === 0) return rawPoints;
+
+    const validSegments = [];
+
+    for (let i = 0; i < rawPoints.length - 1; i++) {
+      const p1 = rawPoints[i];
+      const p2 = rawPoints[i + 1];
+
+      // Find all boundary intersection t values along (p1 -> p2)
+      const cuts = [0, 1];
+
+      for (let r = 0; r < drawingBoundaryRings.length; r++) {
+        const ring = drawingBoundaryRings[r];
+        for (let j = 0; j < ring.length - 1; j++) {
+          const r1 = ring[j];
+          const r2 = ring[j + 1];
+          const hit = getSegmentIntersection(p1, p2, r1, r2);
+          if (hit && hit[2] > 0.0001 && hit[2] < 0.9999) {
+            cuts.push(hit[2]);
+          }
+        }
+      }
+
+      cuts.sort((a, b) => a - b);
+
+      // Deduplicate cuts
+      const uniqueCuts = [];
+      for (let c = 0; c < cuts.length; c++) {
+        if (c === 0 || Math.abs(cuts[c] - cuts[c - 1]) > 0.0001) {
+          uniqueCuts.push(cuts[c]);
+        }
+      }
+
+      // Check each sub-interval
+      for (let c = 0; c < uniqueCuts.length - 1; c++) {
+        const t1 = uniqueCuts[c];
+        const t2 = uniqueCuts[c + 1];
+        const midT = (t1 + t2) / 2;
+        const midLat = p1[0] + midT * (p2[0] - p1[0]);
+        const midLng = p1[1] + midT * (p2[1] - p1[1]);
+
+        if (isInsideMainPlot(midLat, midLng)) {
+          const segPt1 = [p1[0] + t1 * (p2[0] - p1[0]), p1[1] + t1 * (p2[1] - p1[1])];
+          const segPt2 = [p1[0] + t2 * (p2[0] - p1[0]), p1[1] + t2 * (p2[1] - p1[1])];
+          validSegments.push([segPt1, segPt2]);
+        }
+      }
+    }
+
+    if (validSegments.length === 0) return null;
+
+    // Stitch connected segments into continuous paths
+    const paths = [];
+    let currentPath = [validSegments[0][0], validSegments[0][1]];
+
+    for (let s = 1; s < validSegments.length; s++) {
+      const prevEnd = currentPath[currentPath.length - 1];
+      const segStart = validSegments[s][0];
+      const segEnd = validSegments[s][1];
+
+      const dist = Math.hypot(prevEnd[0] - segStart[0], prevEnd[1] - segStart[1]);
+      if (dist < 0.00005) {
+        currentPath.push(segEnd);
+      } else {
+        paths.push(currentPath);
+        currentPath = [segStart, segEnd];
+      }
+    }
+    paths.push(currentPath);
+
+    // Return the longest valid continuous stroke inside the plot
+    paths.sort((a, b) => b.length - a.length);
+    return paths[0];
+  }
 
   function startSubplotDrawing(plot) {
     if (!plot) plot = selectedPlot;
     if (!plot) {
-      showToast('Please select a plot first to sketch subplots');
+      showToast('Please select a plot first to separate subplots');
       return;
     }
 
     drawingMainPlot = plot;
     isDrawingSubplot = true;
-    drawingPoints = [];
-    clearDrawingArtifacts();
+    drawingUndoStack = [];
+    drawingSessionLayers = [];
+    pendingClickPoint = null;
+    if (pendingClickMarker) { map.removeLayer(pendingClickMarker); pendingClickMarker = null; }
+    if (tempStrokeLayer) { map.removeLayer(tempStrokeLayer); tempStrokeLayer = null; }
 
-    // Extract main plot boundary rings for containment check
+    // Extract main plot boundary rings
     extractDrawingBoundaryRings(plot);
 
     // Enter fullscreen drawing mode
@@ -530,41 +695,45 @@
     // Show drawing HUD
     drawingHud.style.display = 'flex';
     drawingTargetLabel.textContent = `${plot.family_id} · Plot ${plot.plot_id}`;
-    drawingPointsCount.textContent = 'Tap inside the plot to place points';
-    btnUndoPoint.disabled = true;
-    btnFinishDrawing.disabled = true;
 
-    showToast('Tap inside the plot boundary to draw a subplot');
+    // Set mode to 'line' by default
+    setDrawingMode('line');
+
+    // Render existing division lines and subplots for this plot
+    renderCurrentPlotDrawingSessionLayers(plot);
+
+    updateDrawingStatusText();
+    showToast('Freely draw lines across the plot to divide subplots');
   }
 
-  // Extract boundary polygon rings from GeoJSON feature for point-in-poly checks
+  // Extract boundary polygon rings from GeoJSON feature for containment checks
   function extractDrawingBoundaryRings(plot) {
     drawingBoundaryRings = [];
-    const feature = allFeatures.find(f => f.properties && f.properties.id === plot.id);
+    const feature = allFeatures.find((f) => f.properties && f.properties.id === plot.id);
     if (!feature || !feature.geometry) return;
 
     const geom = feature.geometry;
     const polys = geom.type === 'MultiPolygon' ? geom.coordinates : [geom.coordinates];
-    polys.forEach(poly => {
-      poly.forEach(ring => {
+    polys.forEach((poly) => {
+      poly.forEach((ring) => {
         // GeoJSON ring: [lng, lat] -> convert to [lat, lng] for Leaflet
-        drawingBoundaryRings.push(ring.map(pt => [pt[1], pt[0]]));
+        drawingBoundaryRings.push(ring.map((pt) => [pt[1], pt[0]]));
       });
     });
   }
 
   // Check if [lat, lng] is inside ANY of the main plot's exterior rings
   function isInsideMainPlot(lat, lng) {
-    if (drawingBoundaryRings.length === 0) return true; // no boundary = allow anywhere
-    // Point-in-polygon ray-casting (check outer rings, not holes)
+    if (!drawingBoundaryRings || drawingBoundaryRings.length === 0) return true;
     for (let ri = 0; ri < drawingBoundaryRings.length; ri++) {
       const ring = drawingBoundaryRings[ri];
       let inside = false;
       for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
         const rLat_i = ring[i][0], rLng_i = ring[i][1];
         const rLat_j = ring[j][0], rLng_j = ring[j][1];
-        const intersect = ((rLat_i > lat) !== (rLat_j > lat)) &&
-          (lng < (rLng_j - rLng_i) * (lat - rLat_i) / (rLat_j - rLat_i) + rLng_i);
+        const intersect =
+          rLat_i > lat !== rLat_j > lat &&
+          lng < ((rLng_j - rLng_i) * (lat - rLat_i)) / (rLat_j - rLat_i) + rLng_i;
         if (intersect) inside = !inside;
       }
       if (inside) return true;
@@ -574,7 +743,6 @@
 
   function enterFullscreenDrawingMode(plot) {
     isFullscreenDrawing = true;
-    // Hide top bar and compass to maximise map area
     document.getElementById('top-bar').style.display = 'none';
     plotDrawer.classList.add('closed');
     compassHud.style.display = 'none';
@@ -582,7 +750,7 @@
     document.getElementById('app-container').classList.add('drawing-fullscreen');
     document.getElementById('map').classList.add('drawing-active');
 
-    // Zoom to the selected plot with generous padding
+    // Zoom to selected plot with generous padding
     const layer = plotLayersById.get(plot.id);
     if (layer && layer.getBounds) {
       map.flyToBounds(layer.getBounds(), { maxZoom: 19, padding: [60, 60], duration: 0.7 });
@@ -590,7 +758,6 @@
       map.flyTo([plot.lat, plot.lng], 18, { duration: 0.7 });
     }
 
-    // Show the main plot as a bright guide boundary
     showMainPlotGuide(plot);
   }
 
@@ -601,11 +768,21 @@
     document.getElementById('map').classList.remove('drawing-active');
     drawingHud.style.display = 'none';
 
-    // Remove boundary guide
     if (mainPlotGuideLayer) {
       map.removeLayer(mainPlotGuideLayer);
       mainPlotGuideLayer = null;
     }
+
+    // Clean up temporary drawing session layers
+    drawingSessionLayers.forEach((l) => map.removeLayer(l));
+    drawingSessionLayers = [];
+
+    if (tempStrokeLayer) { map.removeLayer(tempStrokeLayer); tempStrokeLayer = null; }
+    if (pendingClickMarker) { map.removeLayer(pendingClickMarker); pendingClickMarker = null; }
+    pendingClickPoint = null;
+    isMouseDownDrawing = false;
+    map.dragging.enable();
+    isDrawingSubplot = false;
   }
 
   function showMainPlotGuide(plot) {
@@ -615,9 +792,7 @@
     }
     if (drawingBoundaryRings.length === 0) return;
 
-    // The first ring of each polygon is the exterior ring
-    // Re-package as Leaflet polygon (outer rings only)
-    const latLngs = drawingBoundaryRings.map(ring => ring.map(pt => L.latLng(pt[0], pt[1])));
+    const latLngs = drawingBoundaryRings.map((ring) => ring.map((pt) => L.latLng(pt[0], pt[1])));
     mainPlotGuideLayer = L.polygon(latLngs, {
       color: '#00ffcc',
       weight: 3,
@@ -629,142 +804,374 @@
     }).addTo(map);
   }
 
-  function addDrawingPoint(latlng) {
-    if (!isDrawingSubplot) return;
-
-    const lat = latlng.lat, lng = latlng.lng;
-
-    // --- Boundary restriction: reject points outside the main plot ---
-    if (!isInsideMainPlot(lat, lng)) {
-      // Flash red on the map to indicate rejection
-      flashOutsideBoundary(latlng);
-      showToast('⚠️ Tap inside the plot boundary');
-      return;
-    }
-
-    const pt = [lat, lng];
-    drawingPoints.push(pt);
-
-    // Numbered vertex marker
-    const num = drawingPoints.length;
-    const marker = L.marker(pt, {
-      icon: L.divIcon({
-        className: 'drawing-vertex-icon',
-        html: `<span>${num}</span>`,
-        iconSize: [22, 22],
-        iconAnchor: [11, 11]
-      }),
-      interactive: false
-    }).addTo(map);
-    drawingMarkers.push(marker);
-
-    // Update preview
-    updateDrawingPreview();
-
-    const count = drawingPoints.length;
-    drawingPointsCount.textContent = `${count} point${count > 1 ? 's' : ''}${count >= 3 ? ' — tap Finish ✓' : ''}`;
-    btnUndoPoint.disabled = false;
-    btnFinishDrawing.disabled = count < 3;
-  }
-
   function flashOutsideBoundary(latlng) {
     const flash = L.circleMarker([latlng.lat, latlng.lng], {
-      radius: 14, color: '#ef4444', weight: 3,
-      fillColor: '#ef4444', fillOpacity: 0.4, interactive: false
+      radius: 14,
+      color: '#ef4444',
+      weight: 3,
+      fillColor: '#ef4444',
+      fillOpacity: 0.45,
+      interactive: false
     }).addTo(map);
     setTimeout(() => map.removeLayer(flash), 600);
   }
 
-  function undoLastDrawingPoint() {
-    if (drawingPoints.length === 0) return;
-    drawingPoints.pop();
-    const lastMarker = drawingMarkers.pop();
-    if (lastMarker) map.removeLayer(lastMarker);
-    updateDrawingPreview();
-    const count = drawingPoints.length;
-    drawingPointsCount.textContent = count === 0
-      ? 'Tap inside the plot to place points'
-      : `${count} point${count > 1 ? 's' : ''}${count >= 3 ? ' — tap Finish ✓' : ''}`;
-    btnUndoPoint.disabled = count === 0;
-    btnFinishDrawing.disabled = count < 3;
+  function setDrawingMode(mode) {
+    drawingMode = mode;
+    if (pendingClickMarker) {
+      map.removeLayer(pendingClickMarker);
+      pendingClickMarker = null;
+    }
+    pendingClickPoint = null;
+
+    if (mode === 'line') {
+      btnModeDrawLine.classList.add('active');
+      btnModeAddLabel.classList.remove('active');
+      map.getContainer().classList.add('drawing-active');
+      updateDrawingStatusText();
+    } else {
+      btnModeDrawLine.classList.remove('active');
+      btnModeAddLabel.classList.add('active');
+      map.getContainer().classList.remove('drawing-active');
+      drawingPointsCount.textContent = 'Tap inside any section on the map to add subplot details';
+    }
   }
 
-  function updateDrawingPreview() {
-    // Remove old preview layers
-    if (drawingLine) { map.removeLayer(drawingLine); drawingLine = null; }
-    if (drawingClosingLine) { map.removeLayer(drawingClosingLine); drawingClosingLine = null; }
-    if (drawingPreviewPoly) { map.removeLayer(drawingPreviewPoly); drawingPreviewPoly = null; }
+  function renderCurrentPlotDrawingSessionLayers(plot) {
+    // Render existing division lines for this plot
+    const lines = divisionLines[plot.id] || [];
+    lines.forEach((lineCoords) => {
+      renderSingleDivisionLine(lineCoords, true);
+    });
 
-    if (drawingPoints.length < 2) return;
+    // Render existing subplots for this plot as draggable badges
+    const plotSubplots = subplots.filter((s) => s.parent_plot_id === plot.id);
+    plotSubplots.forEach((sp) => {
+      renderSingleSubplotBadge(sp, true);
+    });
+  }
 
-    // Open path between placed points
-    drawingLine = L.polyline(drawingPoints, {
-      color: '#00f0ff', weight: 2.5, dashArray: '7, 5', interactive: false
+  function renderSingleDivisionLine(lineCoords, isDrawingSession = false) {
+    const glow = L.polyline(lineCoords, {
+      color: '#00f0ff',
+      weight: 6,
+      opacity: 0.45,
+      lineCap: 'round',
+      interactive: false,
+      pane: 'subplotsPane'
     }).addTo(map);
 
-    // Closing dashed segment back to first point (when 3+)
-    if (drawingPoints.length >= 3) {
-      drawingClosingLine = L.polyline([drawingPoints[drawingPoints.length - 1], drawingPoints[0]], {
-        color: '#00f0ff', weight: 1.5, dashArray: '4, 6', opacity: 0.5, interactive: false
-      }).addTo(map);
+    const bund = L.polyline(lineCoords, {
+      color: '#facc15', // agricultural golden ridge
+      weight: 3,
+      dashArray: '6, 5',
+      lineCap: 'round',
+      interactive: false,
+      pane: 'subplotsPane'
+    }).addTo(map);
 
-      // Translucent fill preview polygon
-      drawingPreviewPoly = L.polygon(drawingPoints, {
-        color: '#00f0ff', weight: 0,
-        fillColor: '#00f0ff', fillOpacity: 0.18, interactive: false
+    if (isDrawingSession) {
+      drawingSessionLayers.push(glow, bund);
+    } else if (divisionLinesLayerGroup) {
+      divisionLinesLayerGroup.addLayer(glow);
+      divisionLinesLayerGroup.addLayer(bund);
+    }
+
+    return [glow, bund];
+  }
+
+  function createSubplotBadgeIcon(sp) {
+    const style = getSubplotStyle(sp.variety);
+    const html = `
+      <div class="subplot-map-badge-wrap">
+        <div class="subplot-map-badge ${style.class}">
+          <span class="sp-icon">🌾</span>
+          <span class="sp-code">${escapeHtml(sp.code)}</span>
+          <span class="sp-variety">${escapeHtml(sp.variety)}</span>
+          <span class="sp-area">${sp.area_ha || 0} ha</span>
+        </div>
+      </div>
+    `;
+    return L.divIcon({
+      className: 'custom-subplot-divicon',
+      html: html,
+      iconSize: [160, 32],
+      iconAnchor: [80, 16]
+    });
+  }
+
+  function renderSingleSubplotBadge(sp, isDrawingSession = false) {
+    const lat = sp.lat || (sp.coordinates && sp.coordinates[0] ? sp.coordinates[0][0] : 0);
+    const lng = sp.lng || (sp.coordinates && sp.coordinates[0] ? sp.coordinates[0][1] : 0);
+    if (!lat || !lng) return null;
+
+    const marker = L.marker([lat, lng], {
+      icon: createSubplotBadgeIcon(sp),
+      draggable: isDrawingSession,
+      pane: 'subplotsPane'
+    });
+
+    if (isDrawingSession) {
+      marker.on('dragend', (e) => {
+        const newPos = e.target.getLatLng();
+        if (isInsideMainPlot(newPos.lat, newPos.lng)) {
+          sp.lat = roundTo(newPos.lat, 6);
+          sp.lng = roundTo(newPos.lng, 6);
+          saveStoredSubplots();
+          showToast(`Repositioned ${sp.code}`);
+        } else {
+          marker.setLatLng([sp.lat, sp.lng]);
+          showToast('⚠️ Keep label inside the plot boundary');
+        }
+      });
+
+      marker.on('click', (e) => {
+        L.DomEvent.stopPropagation(e);
+        if (confirm(`Delete "${sp.code}" (${sp.variety})?`)) {
+          deleteSubplot(sp.id);
+          map.removeLayer(marker);
+          updateDrawingStatusText();
+        }
+      });
+
+      marker.addTo(map);
+      drawingSessionLayers.push(marker);
+    } else {
+      marker.bindTooltip(
+        `<b>${escapeHtml(sp.code)}</b> · ${escapeHtml(sp.variety)}<br>${sp.area_ha} ha (${sp.pct_of_parent || 0}%)<br>${escapeHtml(sp.notes || '')}`,
+        { className: 'plot-label-tooltip', sticky: true, direction: 'top' }
+      );
+      marker.on('click', (e) => {
+        L.DomEvent.stopPropagation(e);
+        const parentPlot = searchIndex.find((p) => p.id === sp.parent_plot_id);
+        if (parentPlot) {
+          selectPlot(parentPlot, false);
+        }
+        showToast(`${sp.code}: ${sp.variety} · ${sp.area_ha} ha`);
+      });
+      if (subplotsLayerGroup) {
+        subplotsLayerGroup.addLayer(marker);
+      }
+    }
+
+    return marker;
+  }
+
+  // Pointer & Drag Handlers for Freehand Dividing Lines
+  function handleMapDrawPointerDown(latlng) {
+    if (!isDrawingSubplot || drawingMode !== 'line') return;
+    isMouseDownDrawing = true;
+    currentStrokePoints = [[latlng.lat, latlng.lng]];
+    map.dragging.disable();
+  }
+
+  function handleMapDrawPointerMove(latlng) {
+    if (!isMouseDownDrawing || !isDrawingSubplot || drawingMode !== 'line') return;
+    const lastPt = currentStrokePoints[currentStrokePoints.length - 1];
+    const dist = Math.hypot(latlng.lat - lastPt[0], latlng.lng - lastPt[1]);
+    if (dist > 0.00003) {
+      currentStrokePoints.push([latlng.lat, latlng.lng]);
+      updateStrokePreview();
+    }
+  }
+
+  function handleMapDrawPointerUp() {
+    if (!isMouseDownDrawing) return;
+    isMouseDownDrawing = false;
+    map.dragging.enable();
+
+    if (currentStrokePoints.length >= 2) {
+      commitDrawnLine(currentStrokePoints);
+    }
+    clearStrokePreview();
+  }
+
+  function updateStrokePreview() {
+    if (tempStrokeLayer) {
+      map.removeLayer(tempStrokeLayer);
+    }
+    if (currentStrokePoints.length >= 2) {
+      tempStrokeLayer = L.polyline(currentStrokePoints, {
+        color: '#facc15',
+        weight: 3.5,
+        dashArray: '6, 5',
+        opacity: 0.85,
+        interactive: false,
+        pane: 'subplotsPane'
       }).addTo(map);
     }
   }
 
-  function cancelSubplotDrawing() {
-    isDrawingSubplot = false;
-    drawingMainPlot = null;
-    drawingBoundaryRings = [];
-    clearDrawingArtifacts();
-    exitFullscreenDrawingMode();
-    plotDrawer.classList.remove('closed');
-    showToast('Subplot drawing cancelled');
+  function clearStrokePreview() {
+    if (tempStrokeLayer) {
+      map.removeLayer(tempStrokeLayer);
+      tempStrokeLayer = null;
+    }
+    currentStrokePoints = [];
   }
 
-  function clearDrawingArtifacts() {
-    drawingMarkers.forEach(m => map.removeLayer(m));
-    drawingMarkers = [];
-    if (drawingLine) { map.removeLayer(drawingLine); drawingLine = null; }
-    if (drawingClosingLine) { map.removeLayer(drawingClosingLine); drawingClosingLine = null; }
-    if (drawingPreviewPoly) { map.removeLayer(drawingPreviewPoly); drawingPreviewPoly = null; }
-  }
-
-  function finishSubplotDrawing() {
-    if (drawingPoints.length < 3) {
-      showToast('Draw at least 3 points to form a polygon');
+  function commitDrawnLine(rawPoints) {
+    const clipped = clipPolylineToMainPlot(rawPoints);
+    if (!clipped || clipped.length < 2) {
+      flashOutsideBoundary({ lat: rawPoints[0][0], lng: rawPoints[0][1] });
+      showToast('⚠️ Line must cross inside the plot boundary');
       return;
     }
 
-    // Calculate Area
-    const areaM2 = calculatePolygonAreaM2(drawingPoints);
-    const areaHa = roundTo(areaM2 / 10000.0, 3);
+    if (!divisionLines[drawingMainPlot.id]) {
+      divisionLines[drawingMainPlot.id] = [];
+    }
+    divisionLines[drawingMainPlot.id].push(clipped);
+    saveStoredSubplots();
+
+    const layers = renderSingleDivisionLine(clipped, true);
+
+    drawingUndoStack.push({
+      type: 'line',
+      lineData: clipped,
+      layers: layers,
+      plotId: drawingMainPlot.id
+    });
+
+    if (pendingClickMarker) {
+      map.removeLayer(pendingClickMarker);
+      pendingClickMarker = null;
+    }
+    pendingClickPoint = null;
+
+    btnUndoPoint.disabled = false;
+    btnFinishDrawing.disabled = false;
+
+    updateDrawingStatusText();
+    showToast('Line added! Tap "+ Add Subplot" to label sections, or draw another line.');
+  }
+
+  function handleDrawingClick(latlng) {
+    if (!isDrawingSubplot) return;
+
+    if (drawingMode === 'label') {
+      // User tapped in label mode -> add subplot info
+      if (!isInsideMainPlot(latlng.lat, latlng.lng)) {
+        flashOutsideBoundary(latlng);
+        showToast('⚠️ Tap inside a subplot section within the boundary');
+        return;
+      }
+      openAddSubplotModal(latlng);
+    } else if (drawingMode === 'line') {
+      // Tap-tap straight bund fallback (click point A then point B across plot)
+      if (!isInsideMainPlot(latlng.lat, latlng.lng)) {
+        flashOutsideBoundary(latlng);
+        showToast('⚠️ Tap inside the plot boundary');
+        return;
+      }
+
+      if (!pendingClickPoint) {
+        pendingClickPoint = [latlng.lat, latlng.lng];
+        pendingClickMarker = L.circleMarker([latlng.lat, latlng.lng], {
+          radius: 6,
+          color: '#facc15',
+          fillColor: '#facc15',
+          fillOpacity: 0.9,
+          pane: 'subplotsPane'
+        }).addTo(map);
+        drawingPointsCount.textContent = 'Tap second point across the plot to complete dividing line';
+      } else {
+        commitDrawnLine([pendingClickPoint, [latlng.lat, latlng.lng]]);
+      }
+    }
+  }
+
+  function openAddSubplotModal(latlng) {
+    pendingSubplotLatLng = [latlng.lat, latlng.lng];
+
+    const plotSubplots = subplots.filter((s) => s.parent_plot_id === drawingMainPlot.id);
+    const existingCount = plotSubplots.length;
+    const autoLabel = String.fromCharCode(65 + existingCount); // A, B, C...
+
     const parentHa = drawingMainPlot.area_ha || 1.0;
-    const pct = roundTo((areaHa / parentHa) * 100, 1);
+    const usedHa = plotSubplots.reduce((acc, s) => acc + (s.area_ha || 0), 0);
+    const remainingHa = Math.max(0, roundTo(parentHa - usedHa, 2));
 
-    currentSubplotCalc = { ha: areaHa, m2: Math.round(areaM2), pct: pct };
+    const suggestedHa = remainingHa > 0
+      ? roundTo(remainingHa > (parentHa / 2) ? (remainingHa / 2) : remainingHa, 2)
+      : roundTo(parentHa / (existingCount + 2), 2);
 
-    // Auto-number subplots: use letter labels A, B, C...
-    const existingCount = subplots.filter(s => s.parent_plot_id === drawingMainPlot.id).length;
-    const autoLabel = String.fromCharCode(65 + existingCount); // A, B, C ...
-
-    // Populate & open modal
     modalPlotRef.textContent = `Family ${drawingMainPlot.family_id} · Plot ${drawingMainPlot.plot_id} (${drawingMainPlot.village})`;
-    modalCalcHa.textContent = `${areaHa} ha`;
-    modalCalcM2.textContent = `${Math.round(areaM2).toLocaleString()} m²`;
-    modalCalcPct.textContent = `${pct}%`;
-
     subplotCode.value = `Subplot ${autoLabel}`;
     subplotVariety.value = 'Phka Rumduol';
     customVarietyGroup.style.display = 'none';
     subplotCustomVariety.value = '';
+    subplotAreaHa.value = suggestedHa;
+    subplotAreaPct.value = `${roundTo((suggestedHa / parentHa) * 100, 1)}%`;
     subplotNotes.value = '';
 
     subplotModal.style.display = 'flex';
+    setTimeout(() => subplotCode.focus(), 80);
+  }
+
+  function updateDrawingStatusText() {
+    if (!drawingMainPlot) return;
+    const lines = divisionLines[drawingMainPlot.id] || [];
+    const plotSubplots = subplots.filter((s) => s.parent_plot_id === drawingMainPlot.id);
+
+    if (drawingMode === 'label') {
+      drawingPointsCount.textContent = 'Tap inside any subplot section to add information & label';
+    } else {
+      if (lines.length === 0) {
+        drawingPointsCount.textContent = 'Freely draw a line across the plot to divide subplots';
+      } else {
+        drawingPointsCount.textContent = `${lines.length} separation line${lines.length > 1 ? 's' : ''} · ${plotSubplots.length} labeled. Tap "+ Add Subplot" or Done.`;
+      }
+    }
+
+    btnUndoPoint.disabled = drawingUndoStack.length === 0;
+    btnFinishDrawing.disabled = (lines.length === 0 && plotSubplots.length === 0);
+  }
+
+  function undoLastAction() {
+    if (drawingUndoStack.length === 0) return;
+    const item = drawingUndoStack.pop();
+
+    if (item.type === 'line') {
+      if (divisionLines[item.plotId]) {
+        const idx = divisionLines[item.plotId].lastIndexOf(item.lineData);
+        if (idx !== -1) divisionLines[item.plotId].splice(idx, 1);
+      }
+      if (item.layers) {
+        item.layers.forEach((l) => map.removeLayer(l));
+      }
+      showToast('Undid separation line');
+    } else if (item.type === 'subplot') {
+      subplots = subplots.filter((s) => s.id !== item.subplot.id);
+      if (item.marker) {
+        map.removeLayer(item.marker);
+      }
+      showToast(`Undid ${item.subplot.code}`);
+    }
+
+    saveStoredSubplots();
+    updateDrawingStatusText();
+  }
+
+  function finishSubplotDrawing() {
+    saveStoredSubplots();
+    exitFullscreenDrawingMode();
+    renderAllStoredSubplotsOnMap();
+    if (selectedPlot) {
+      renderSubplotsListForSelectedPlot();
+      plotDrawer.classList.remove('closed');
+    }
+    showToast(`✅ Saved subplots for Plot ${drawingMainPlot.plot_id}`);
+  }
+
+  function cancelSubplotDrawing() {
+    exitFullscreenDrawingMode();
+    renderAllStoredSubplotsOnMap();
+    if (selectedPlot) {
+      renderSubplotsListForSelectedPlot();
+      plotDrawer.classList.remove('closed');
+    }
+    showToast('Drawing closed');
   }
 
   function onSubplotFormSubmit(e) {
@@ -778,15 +1185,12 @@
     }
 
     const notes = subplotNotes.value.trim();
+    const areaHa = parseFloat(subplotAreaHa.value) || 0;
+    const parentHa = (drawingMainPlot && drawingMainPlot.area_ha) ? drawingMainPlot.area_ha : 1;
+    const pct = parentHa > 0 ? roundTo((areaHa / parentHa) * 100, 1) : 0;
 
-    // Ensure polygon is closed (first point === last point)
-    const ring = drawingPoints.slice();
-    if (
-      ring.length > 0 &&
-      (ring[0][0] !== ring[ring.length - 1][0] || ring[0][1] !== ring[ring.length - 1][1])
-    ) {
-      ring.push(ring[0]);
-    }
+    const lat = pendingSubplotLatLng ? pendingSubplotLatLng[0] : drawingMainPlot.lat;
+    const lng = pendingSubplotLatLng ? pendingSubplotLatLng[1] : drawingMainPlot.lng;
 
     const newSubplot = {
       id: 'sp_' + Date.now(),
@@ -799,64 +1203,65 @@
       code: code,
       variety: variety,
       notes: notes,
-      area_ha: currentSubplotCalc ? currentSubplotCalc.ha : 0,
-      area_m2: currentSubplotCalc ? currentSubplotCalc.m2 : 0,
-      pct_of_parent: currentSubplotCalc ? currentSubplotCalc.pct : 0,
-      coordinates: ring, // [[lat, lng], ...]
+      area_ha: areaHa,
+      area_m2: Math.round(areaHa * 10000),
+      pct_of_parent: pct,
+      lat: roundTo(lat, 6),
+      lng: roundTo(lng, 6),
+      coordinates: [[roundTo(lat, 6), roundTo(lng, 6)]],
       created_at: new Date().toISOString()
     };
 
     subplots.push(newSubplot);
     saveStoredSubplots();
 
-    // Close modal & exit fullscreen drawing mode
+    // Create badge marker on map
+    const badgeMarker = renderSingleSubplotBadge(newSubplot, true);
+
+    drawingUndoStack.push({
+      type: 'subplot',
+      subplot: newSubplot,
+      marker: badgeMarker
+    });
+
     subplotModal.style.display = 'none';
-    isDrawingSubplot = false;
-    drawingBoundaryRings = [];
-    clearDrawingArtifacts();
-    exitFullscreenDrawingMode();
-
-    // Re-render subplots on map and update drawer
-    renderAllStoredSubplotsOnMap();
-    if (selectedPlot) renderSubplotsListForSelectedPlot();
-    plotDrawer.classList.remove('closed');
-
-    showToast(`✅ Saved ${code} (${variety}, ${newSubplot.area_ha} ha)`);
+    updateDrawingStatusText();
+    showToast(`✅ Saved ${code}: ${variety} (${areaHa} ha)`);
   }
 
   // --- Render Subplots on Leaflet Map ---
   function renderAllStoredSubplotsOnMap() {
-    if (!subplotsLayerGroup) return;
-    subplotsLayerGroup.clearLayers();
+    if (subplotsLayerGroup) subplotsLayerGroup.clearLayers();
+    if (divisionLinesLayerGroup) divisionLinesLayerGroup.clearLayers();
 
+    // Render all saved division lines
+    Object.keys(divisionLines).forEach((plotId) => {
+      const lines = divisionLines[plotId] || [];
+      lines.forEach((lineCoords) => {
+        renderSingleDivisionLine(lineCoords, false);
+      });
+    });
+
+    // Render all saved subplots (polygons if any, plus badge markers)
     subplots.forEach((sp) => {
-      const style = getSubplotStyle(sp.variety);
-      const poly = L.polygon(sp.coordinates, {
-        pane: 'subplotsPane',
-        color: style.borderColor,
-        weight: 2.5,
-        dashArray: '4, 4',
-        fillColor: style.fillColor,
-        fillOpacity: 0.55
-      });
+      if (sp.coordinates && sp.coordinates.length >= 3) {
+        const style = getSubplotStyle(sp.variety);
+        const poly = L.polygon(sp.coordinates, {
+          pane: 'subplotsPane',
+          color: style.borderColor,
+          weight: 2,
+          dashArray: '4, 4',
+          fillColor: style.fillColor,
+          fillOpacity: 0.35
+        });
+        poly.bindTooltip(
+          `<b>${escapeHtml(sp.code)}</b> (${escapeHtml(sp.variety)})<br>${sp.area_ha} ha`,
+          { className: 'plot-label-tooltip', sticky: true, direction: 'center' }
+        );
+        subplotsLayerGroup.addLayer(poly);
+      }
 
-      // Tooltip / Popup on Subplot
-      poly.bindTooltip(
-        `<b>${escapeHtml(sp.code)}</b> (${escapeHtml(sp.variety)})<br>${sp.area_ha} ha (${sp.pct_of_parent || 0}%)`,
-        { className: 'plot-label-tooltip', sticky: true, direction: 'center' }
-      );
-
-      poly.on('click', (e) => {
-        L.DomEvent.stopPropagation(e);
-        // Find parent plot if available and select it
-        const parentPlot = searchIndex.find((p) => p.id === sp.parent_plot_id);
-        if (parentPlot) {
-          selectPlot(parentPlot, false);
-        }
-        showToast(`Subplot ${sp.code}: ${sp.variety} · ${sp.area_ha} ha`);
-      });
-
-      subplotsLayerGroup.addLayer(poly);
+      renderSingleSubplotBadge(sp, false);
     });
   }
 
@@ -958,18 +1363,26 @@
 
   // --- Export Subplots as GeoJSON ---
   function exportSubplotsGeoJSON() {
-    if (subplots.length === 0) {
-      showToast('No subplots have been sketched yet');
-      return;
-    }
+    const features = [];
 
-    const features = subplots.map((sp) => {
-      // GeoJSON coordinates format is [lon, lat]
-      const geojsonRing = sp.coordinates.map((pt) => [roundTo(pt[1], 6), roundTo(pt[0], 6)]);
-      return {
+    // Subplot features
+    subplots.forEach((sp) => {
+      const isPoly = sp.coordinates && sp.coordinates.length >= 3;
+      const geom = isPoly
+        ? {
+            type: 'Polygon',
+            coordinates: [sp.coordinates.map((pt) => [roundTo(pt[1], 6), roundTo(pt[0], 6)])]
+          }
+        : {
+            type: 'Point',
+            coordinates: [roundTo(sp.lng, 6), roundTo(sp.lat, 6)]
+          };
+
+      features.push({
         type: 'Feature',
         id: sp.id,
         properties: {
+          feature_type: 'subplot',
           subplot_code: sp.code,
           rice_variety: sp.variety,
           area_ha: sp.area_ha,
@@ -982,12 +1395,33 @@
           inspection_notes: sp.notes || '',
           created_at: sp.created_at
         },
-        geometry: {
-          type: 'Polygon',
-          coordinates: [geojsonRing]
-        }
-      };
+        geometry: geom
+      });
     });
+
+    // Division Line features
+    Object.keys(divisionLines).forEach((plotId) => {
+      const lines = divisionLines[plotId] || [];
+      lines.forEach((line, idx) => {
+        features.push({
+          type: 'Feature',
+          properties: {
+            feature_type: 'division_bund',
+            parent_plot_id: parseInt(plotId, 10),
+            line_number: idx + 1
+          },
+          geometry: {
+            type: 'LineString',
+            coordinates: line.map((pt) => [roundTo(pt[1], 6), roundTo(pt[0], 6)])
+          }
+        });
+      });
+    });
+
+    if (features.length === 0) {
+      showToast('No subplots or division lines have been sketched yet');
+      return;
+    }
 
     const geojson = {
       type: 'FeatureCollection',
@@ -1004,7 +1438,7 @@
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
 
-    showToast(`Exported ${subplots.length} subplots to GeoJSON`);
+    showToast(`Exported ${features.length} inspection features to GeoJSON`);
   }
 
   // --- Event Bindings ---
@@ -1030,10 +1464,10 @@
       }
     });
 
-    // Filters
+    // Filter toggle and controls
     btnToggleFilters.addEventListener('click', () => {
-      filterPanel.classList.toggle('closed');
-      btnToggleFilters.classList.toggle('active', !filterPanel.classList.contains('closed'));
+      const isClosed = filterPanel.classList.toggle('closed');
+      btnToggleFilters.classList.toggle('active', !isClosed);
     });
 
     filterSite.addEventListener('change', onSiteChanged);
@@ -1082,9 +1516,11 @@
     btnStartCompass.addEventListener('click', startWalkingCompassMode);
     btnCloseCompass.addEventListener('click', stopWalkingCompassMode);
 
-    // Subplot Drawing Controls
+    // Subplot Drawing & Separation Controls
     btnStartDrawing.addEventListener('click', () => startSubplotDrawing(selectedPlot));
-    btnUndoPoint.addEventListener('click', undoLastDrawingPoint);
+    btnModeDrawLine.addEventListener('click', () => setDrawingMode('line'));
+    btnModeAddLabel.addEventListener('click', () => setDrawingMode('label'));
+    btnUndoPoint.addEventListener('click', undoLastAction);
     btnFinishDrawing.addEventListener('click', finishSubplotDrawing);
     btnCancelDrawing.addEventListener('click', cancelSubplotDrawing);
 
@@ -1092,6 +1528,17 @@
     subplotForm.addEventListener('submit', onSubplotFormSubmit);
     btnCloseModal.addEventListener('click', () => (subplotModal.style.display = 'none'));
     btnCancelModal.addEventListener('click', () => (subplotModal.style.display = 'none'));
+
+    // Dynamic % calculation when user edits Area (ha)
+    subplotAreaHa.addEventListener('input', () => {
+      const val = parseFloat(subplotAreaHa.value);
+      const parentHa = (drawingMainPlot && drawingMainPlot.area_ha) ? drawingMainPlot.area_ha : 1;
+      if (!isNaN(val) && val >= 0 && parentHa > 0) {
+        subplotAreaPct.value = `${((val / parentHa) * 100).toFixed(1)}%`;
+      } else {
+        subplotAreaPct.value = '';
+      }
+    });
 
     subplotVariety.addEventListener('change', () => {
       customVarietyGroup.style.display = subplotVariety.value === 'Other' ? 'flex' : 'none';

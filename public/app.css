@@ -598,16 +598,18 @@ html, body {
 
 .plot-drawer.closed {
   transform: translateY(100%);
+  pointer-events: none;
 }
 
 @media (min-width: 768px) {
   .plot-drawer {
-    left: 20px;
+    left: 16px;
     right: auto;
-    bottom: 20px;
-    top: 20px;
-    width: 415px;
-    max-height: calc(100% - 40px);
+    bottom: auto;
+    top: 16px;
+    width: 385px;
+    max-height: calc(100% - 32px);
+    height: auto;
     border: 1px solid rgba(228, 168, 52, 0.4);
     border-radius: var(--radius-lg);
     box-shadow: 0 12px 36px rgba(0, 0, 0, 0.65), 0 0 0 1px rgba(255, 255, 255, 0.08);
@@ -615,6 +617,15 @@ html, body {
 
   .plot-drawer.closed {
     transform: translateX(calc(-100% - 30px));
+    pointer-events: none;
+  }
+
+  .drawer-handle {
+    display: none;
+  }
+
+  .drawer-content {
+    padding: 16px;
   }
 }
 
@@ -650,19 +661,19 @@ html, body {
 .plot-card {
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 10px;
 }
 
 .plot-title-row {
   display: flex;
   justify-content: space-between;
-  align-items: flex-start;
+  align-items: center;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  padding-bottom: 10px;
+  padding-bottom: 8px;
 }
 
 .plot-eyebrow {
-  font-size: 0.78rem;
+  font-size: 0.72rem;
   color: var(--brand-gold);
   font-weight: 600;
   text-transform: uppercase;
@@ -670,16 +681,17 @@ html, body {
 }
 
 .plot-title-row h2 {
-  font-size: 1.25rem;
+  font-size: 1.18rem;
   font-weight: 700;
   color: #fff;
+  line-height: 1.2;
 }
 
 .plot-area-badge {
   background: linear-gradient(135deg, rgba(228, 168, 52, 0.2), rgba(228, 168, 52, 0.08));
   border: 1px solid rgba(228, 168, 52, 0.4);
   border-radius: var(--radius-md);
-  padding: 4px 10px;
+  padding: 3px 8px;
   text-align: right;
   flex-shrink: 0;
 }
@@ -692,12 +704,12 @@ html, body {
 }
 
 .drawer-close-btn {
-  width: 34px;
-  height: 34px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.15);
-  color: #cbd5e1;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  color: #fff;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -707,10 +719,10 @@ html, body {
 }
 
 .drawer-close-btn:hover {
-  background: rgba(239, 68, 68, 0.25);
+  background: rgba(239, 68, 68, 0.35);
   border-color: #ef4444;
-  color: #ef4444;
-  transform: scale(1.08);
+  color: #fff;
+  transform: scale(1.1);
 }
 
 .drawer-alloc-tracker {
@@ -1359,7 +1371,25 @@ html, body {
 .subplots-list {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
+  max-height: 165px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.subplots-list::-webkit-scrollbar {
+  width: 5px;
+}
+.subplots-list::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 4px;
+}
+.subplots-list::-webkit-scrollbar-thumb {
+  background: rgba(228, 168, 52, 0.4);
+  border-radius: 4px;
+}
+.subplots-list::-webkit-scrollbar-thumb:hover {
+  background: var(--brand-gold);
 }
 
 .subplots-empty {

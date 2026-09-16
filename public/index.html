@@ -261,9 +261,17 @@
               <span class="plot-eyebrow" id="card-site">Keo Seima · Srea Chhuk</span>
               <h2 id="card-heading">Family <span id="card-family">SD041</span> · Plot <span id="card-plot">11</span></h2>
             </div>
-            <div class="plot-area-badge" id="card-area-badge">
-              <span class="area-value" id="card-area">1.45</span>
-              <span class="area-unit">ha</span>
+            <div class="plot-header-right">
+              <div class="plot-area-badge" id="card-area-badge">
+                <span class="area-value" id="card-area">1.45</span>
+                <span class="area-unit">ha</span>
+              </div>
+              <button id="btn-close-plot-drawer" class="drawer-close-btn" aria-label="Close plot details" title="Close">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <line x1="18" y1="6" x2="6" y2="18"></line>
+                  <line x1="6" y1="6" x2="18" y2="18"></line>
+                </svg>
+              </button>
             </div>
           </div>
 
@@ -302,6 +310,17 @@
                 </svg>
                 <span>+ Draw Subplot</span>
               </button>
+            </div>
+
+            <!-- Subplots Allocation Tracker in Drawer -->
+            <div id="drawer-alloc-tracker" class="drawer-alloc-tracker" style="display: none;">
+              <div class="tracker-header">
+                <span>Plot Area Allocation</span>
+                <span id="drawer-alloc-badge" class="tracker-badge pending">0% of 0 ha</span>
+              </div>
+              <div class="tracker-bar">
+                <div id="drawer-alloc-fill" class="tracker-fill" style="width: 0%;"></div>
+              </div>
             </div>
             
             <div id="subplots-list" class="subplots-list">
@@ -369,14 +388,27 @@
         </div>
         
         <form id="subplot-form" class="modal-body">
+          <!-- Allocation balance tracker banner -->
+          <div class="alloc-banner" id="subplot-alloc-banner">
+            <div class="alloc-banner-row">
+              <span>Main Plot: <b id="alloc-main-ha">0.00 ha</b> (100%)</span>
+              <span id="alloc-status-text">Available: <b id="alloc-remaining-pct">100%</b> (<span id="alloc-remaining-ha">0.00 ha</span>)</span>
+            </div>
+            <div class="alloc-meter-track">
+              <div id="alloc-meter-used" class="alloc-meter-fill-used" style="width: 0%;" title="Already allocated"></div>
+              <div id="alloc-meter-current" class="alloc-meter-fill-current" style="width: 0%;" title="This subplot"></div>
+            </div>
+            <div id="alloc-warning" class="alloc-warning" style="display: none;"></div>
+          </div>
+
           <div class="form-row-two">
             <div class="form-group">
-              <label for="subplot-area-ha">Subplot Area (Hectares) *</label>
-              <input type="number" id="subplot-area-ha" step="0.01" min="0" placeholder="e.g. 1.30" required autocomplete="off" />
+              <label for="subplot-area-pct">% of Main Plot *</label>
+              <input type="number" id="subplot-area-pct" step="0.1" min="0.1" max="100" placeholder="e.g. 50" required autocomplete="off" />
             </div>
             <div class="form-group">
-              <label for="subplot-area-pct">% of Main Plot</label>
-              <input type="text" id="subplot-area-pct" readonly placeholder="50%" style="background: rgba(255, 255, 255, 0.05); color: var(--brand-gold); font-weight: 700;" />
+              <label for="subplot-area-ha">Subplot Area (Hectares) *</label>
+              <input type="number" id="subplot-area-ha" step="0.01" min="0.01" placeholder="e.g. 1.23" required autocomplete="off" />
             </div>
           </div>
 
@@ -409,7 +441,7 @@
 
           <div class="modal-footer">
             <button type="button" id="btn-cancel-modal" class="secondary-btn">Cancel</button>
-            <button type="submit" class="primary-btn save-btn">Save Subplot</button>
+            <button type="submit" id="btn-save-subplot" class="primary-btn save-btn">Save Subplot</button>
           </div>
         </form>
       </div>

@@ -120,6 +120,7 @@
   const subplotForm = document.getElementById('subplot-form');
   const btnCloseModal = document.getElementById('btn-close-modal');
   const btnCancelModal = document.getElementById('btn-cancel-modal');
+  const btnSaveSubplot = document.getElementById('btn-save-subplot');
   const modalPlotRef = document.getElementById('modal-plot-ref');
   const subplotAreaHa = document.getElementById('subplot-area-ha');
   const subplotAreaPct = document.getElementById('subplot-area-pct');
@@ -128,6 +129,20 @@
   const customVarietyGroup = document.getElementById('custom-variety-group');
   const subplotCustomVariety = document.getElementById('subplot-custom-variety');
   const subplotNotes = document.getElementById('subplot-notes');
+
+  // Allocation tracker elements
+  const btnClosePlotDrawer = document.getElementById('btn-close-plot-drawer');
+  const drawerAllocTracker = document.getElementById('drawer-alloc-tracker');
+  const drawerAllocBadge = document.getElementById('drawer-alloc-badge');
+  const drawerAllocFill = document.getElementById('drawer-alloc-fill');
+
+  const subplotAllocBanner = document.getElementById('subplot-alloc-banner');
+  const allocMainHa = document.getElementById('alloc-main-ha');
+  const allocRemainingPct = document.getElementById('alloc-remaining-pct');
+  const allocRemainingHa = document.getElementById('alloc-remaining-ha');
+  const allocMeterUsed = document.getElementById('alloc-meter-used');
+  const allocMeterCurrent = document.getElementById('alloc-meter-current');
+  const allocWarning = document.getElementById('alloc-warning');
 
   const toast = document.getElementById('toast');
   const offlineBadge = document.getElementById('offline-badge');
@@ -209,12 +224,15 @@
   // --- Map Initialization ---
   function initMap() {
     map = L.map('map', {
-      zoomControl: true,
+      zoomControl: false,
       attributionControl: false,
       maxZoom: 19,
       minZoom: 6
       // No preferCanvas - use default SVG renderer for reliability
     }).setView([13.7, 105.8], 8);
+
+    // Position zoom buttons in bottom-right corner so they never overlap the left drawer or top search
+    L.control.zoom({ position: 'bottomright' }).addTo(map);
 
     // Custom pane for subplots to always render above main plot polygons
     map.createPane('subplotsPane');
@@ -1099,30 +1117,107 @@
     }
   }
 
+  let currentModalRemainingPct = 100;
+  let currentModalRemainingHa = 1.0;
+  let currentModalUsedPct = 0;
+  let currentModalParentHa = 1.0;
+
+  function validateSubplotAllocation() {
+    if (!drawingMainPlot) return;
+    const parentHa = currentModalParentHa;
+    const remainingPct = currentModalRemainingPct;
+    const remainingHa = currentModalRemainingHa;
+    const usedPct = currentModalUsedPct;
+
+    const pct = parseFloat(subplotAreaPct.value);
+    const ha = parseFloat(subplotAreaHa.value);
+
+    if (isNaN(pct) || pct <= 0 || isNaN(ha) || ha <= 0) {
+      if (allocWarning) allocWarning.style.display = 'none';
+      if (btnSaveSubplot) btnSaveSubplot.disabled = true;
+      if (allocMeterCurrent) allocMeterCurrent.style.width = '0%';
+      return;
+    }
+
+    const currentTotalPct = roundTo(usedPct + pct, 1);
+
+    if (pct > (remainingPct + 0.05)) {
+      if (allocWarning) {
+        allocWarning.style.display = 'block';
+        allocWarning.className = 'alloc-warning error';
+        allocWarning.innerHTML = `❌ <b>Exceeds 100%!</b> Maximum available is <b>${remainingPct}%</b> (${remainingHa} ha). Total subplots cannot exceed the main plot area.`;
+      }
+      subplotAreaPct.style.borderColor = '#ef4444';
+      subplotAreaHa.style.borderColor = '#ef4444';
+      if (btnSaveSubplot) btnSaveSubplot.disabled = true;
+      if (allocMeterCurrent) {
+        allocMeterCurrent.style.width = `${Math.min(100 - usedPct, remainingPct)}%`;
+        allocMeterCurrent.style.background = '#ef4444';
+      }
+    } else {
+      subplotAreaPct.style.borderColor = '';
+      subplotAreaHa.style.borderColor = '';
+      if (btnSaveSubplot) btnSaveSubplot.disabled = false;
+      if (allocMeterCurrent) {
+        allocMeterCurrent.style.width = `${Math.min(100 - usedPct, pct)}%`;
+        allocMeterCurrent.style.background = 'linear-gradient(90deg, #facc15, #eab308)';
+      }
+
+      const afterRemaining = Math.max(0, roundTo(remainingPct - pct, 1));
+      if (allocWarning) {
+        allocWarning.style.display = 'block';
+        if (afterRemaining <= 0.05) {
+          allocWarning.className = 'alloc-warning success';
+          allocWarning.innerHTML = `✅ <b>Exactly 100% allocated</b> (${parentHa} ha total). Perfect!`;
+        } else {
+          allocWarning.className = 'alloc-warning info';
+          allocWarning.innerHTML = `ℹ️ Total will be <b>${currentTotalPct}%</b> · Leaves <b>${afterRemaining}%</b> (${roundTo((afterRemaining / 100) * parentHa, 2)} ha) unallocated.`;
+        }
+      }
+    }
+  }
+
   function openAddSubplotModal(latlng) {
     pendingSubplotLatLng = [latlng.lat, latlng.lng];
 
     const plotSubplots = subplots.filter((s) => s.parent_plot_id === drawingMainPlot.id);
-    const existingCount = plotSubplots.length;
-
     const parentHa = drawingMainPlot.area_ha || 1.0;
-    const usedHa = plotSubplots.reduce((acc, s) => acc + (s.area_ha || 0), 0);
-    const remainingHa = Math.max(0, roundTo(parentHa - usedHa, 2));
+    const usedPct = roundTo(plotSubplots.reduce((acc, s) => acc + (parseFloat(s.pct_of_parent) || 0), 0), 1);
+    const remainingPct = Math.max(0, roundTo(100 - usedPct, 1));
+    const usedHa = roundTo(plotSubplots.reduce((acc, s) => acc + (parseFloat(s.area_ha) || 0), 0), 2);
+    const remainingHa = Math.max(0, roundTo((remainingPct / 100) * parentHa, 2));
 
-    const suggestedHa = remainingHa > 0
-      ? roundTo(remainingHa > (parentHa / 2) ? (remainingHa / 2) : remainingHa, 2)
-      : roundTo(parentHa / (existingCount + 2), 2);
+    if (remainingPct <= 0.05 || remainingHa <= 0.005) {
+      showToast(`⚠️ Plot ${drawingMainPlot.plot_id} is already 100% allocated (${parentHa} ha across ${plotSubplots.length} subplots). Delete or adjust a subplot to reallocate.`);
+      return;
+    }
+
+    currentModalParentHa = parentHa;
+    currentModalUsedPct = usedPct;
+    currentModalRemainingPct = remainingPct;
+    currentModalRemainingHa = remainingHa;
 
     modalPlotRef.textContent = `Family ${drawingMainPlot.family_id} · Plot ${drawingMainPlot.plot_id} (${drawingMainPlot.village})`;
+
+    // Banner stats
+    if (allocMainHa) allocMainHa.textContent = `${parentHa.toFixed(2)} ha`;
+    if (allocRemainingPct) allocRemainingPct.textContent = `${remainingPct}%`;
+    if (allocRemainingHa) allocRemainingHa.textContent = `${remainingHa.toFixed(2)} ha`;
+    if (allocMeterUsed) allocMeterUsed.style.width = `${Math.min(100, usedPct)}%`;
+
+    // Default to full remaining allocation so it naturally sums to 100%
+    subplotAreaPct.value = remainingPct;
+    subplotAreaHa.value = remainingHa;
+
     // Do not prefill default name - use placeholder as requested
     subplotCode.value = '';
     subplotCode.placeholder = 'Please enter subplot name';
     subplotVariety.value = 'Phka Rumduol';
     customVarietyGroup.style.display = 'none';
     subplotCustomVariety.value = '';
-    subplotAreaHa.value = suggestedHa;
-    subplotAreaPct.value = `${roundTo((suggestedHa / parentHa) * 100, 1)}%`;
     subplotNotes.value = '';
+
+    validateSubplotAllocation();
 
     subplotModal.style.display = 'flex';
     setTimeout(() => subplotCode.focus(), 80);
@@ -1132,14 +1227,22 @@
     if (!drawingMainPlot) return;
     const lines = divisionLines[drawingMainPlot.id] || [];
     const plotSubplots = subplots.filter((s) => s.parent_plot_id === drawingMainPlot.id);
+    const totalAllocatedPct = roundTo(
+      plotSubplots.reduce((acc, s) => acc + (parseFloat(s.pct_of_parent) || 0), 0),
+      1
+    );
 
     if (drawingMode === 'label') {
-      drawingPointsCount.textContent = 'Tap inside any subplot section to add information & label';
+      if (totalAllocatedPct >= 99.5) {
+        drawingPointsCount.textContent = `✓ 100% allocated (${plotSubplots.length} subplots). Tap "Done" to save.`;
+      } else {
+        drawingPointsCount.textContent = `Allocated: ${totalAllocatedPct}% (${roundTo(100 - totalAllocatedPct, 1)}% unallocated). Tap section to label.`;
+      }
     } else {
       if (lines.length === 0) {
         drawingPointsCount.textContent = 'Freely draw a line across the plot to divide subplots';
       } else {
-        drawingPointsCount.textContent = `${lines.length} separation line${lines.length > 1 ? 's' : ''} · ${plotSubplots.length} labeled. Tap "+ Add Subplot" or Done.`;
+        drawingPointsCount.textContent = `${lines.length} separation line${lines.length > 1 ? 's' : ''} · ${plotSubplots.length} labeled (${totalAllocatedPct}%). Tap "+ Add Subplot" or Done.`;
       }
     }
 
@@ -1172,6 +1275,50 @@
   }
 
   function finishSubplotDrawing() {
+    if (!drawingMainPlot) return;
+    const plotSubplots = subplots.filter((s) => s.parent_plot_id === drawingMainPlot.id);
+    const parentHa = drawingMainPlot.area_ha || 1.0;
+
+    // Subplots must total 100% of the main plot
+    if (plotSubplots.length > 0) {
+      const totalPct = roundTo(
+        plotSubplots.reduce((acc, s) => acc + (parseFloat(s.pct_of_parent) || 0), 0),
+        1
+      );
+
+      if (totalPct < 99.0) {
+        const remainingPct = roundTo(100 - totalPct, 1);
+        const remainingHa = roundTo((remainingPct / 100) * parentHa, 2);
+        alert(
+          `⚠️ Total subplots must equal 100% of the main plot area.\n\n` +
+          `Current subplots total: ${totalPct}%\n` +
+          `Remaining unallocated: ${remainingPct}% (${remainingHa} ha).\n\n` +
+          `Please tap "+ Add Subplot" to assign the remaining parcel before finishing.`
+        );
+        return;
+      }
+
+      if (totalPct > 101.0) {
+        alert(
+          `⚠️ Total subplots exceed 100% (${totalPct}%).\n\n` +
+          `Please adjust or delete subplots so the total equals 100%.`
+        );
+        return;
+      }
+
+      // If minor decimal rounding discrepancy, adjust the last subplot so it sums exactly to 100.0%
+      if (Math.abs(totalPct - 100) > 0.001) {
+        const otherPcts = roundTo(
+          plotSubplots.slice(0, -1).reduce((acc, s) => acc + (parseFloat(s.pct_of_parent) || 0), 0),
+          1
+        );
+        const lastSp = plotSubplots[plotSubplots.length - 1];
+        lastSp.pct_of_parent = roundTo(100 - otherPcts, 1);
+        lastSp.area_ha = roundTo((lastSp.pct_of_parent / 100) * parentHa, 2);
+        lastSp.area_m2 = Math.round(lastSp.area_ha * 10000);
+      }
+    }
+
     // Commit all changes made in this session
     sessionBackup = null;
     saveStoredSubplots();
@@ -1181,7 +1328,7 @@
       renderSubplotsListForSelectedPlot();
       plotDrawer.classList.remove('closed');
     }
-    showToast(`✅ Saved subplots for Plot ${drawingMainPlot ? drawingMainPlot.plot_id : ''}`);
+    showToast(`✅ Saved subplots for Plot ${drawingMainPlot ? drawingMainPlot.plot_id : ''} (100% allocated)`);
   }
 
   function cancelSubplotDrawing() {
@@ -1250,9 +1397,24 @@
     }
 
     const notes = subplotNotes.value.trim();
-    const areaHa = parseFloat(subplotAreaHa.value) || 0;
     const parentHa = (drawingMainPlot && drawingMainPlot.area_ha) ? drawingMainPlot.area_ha : 1;
-    const pct = parentHa > 0 ? roundTo((areaHa / parentHa) * 100, 1) : 0;
+
+    const pct = parseFloat(subplotAreaPct.value) || 0;
+    const areaHa = parseFloat(subplotAreaHa.value) || roundTo((pct / 100) * parentHa, 2);
+
+    const plotSubplots = subplots.filter((s) => s.parent_plot_id === drawingMainPlot.id);
+    const usedPct = roundTo(plotSubplots.reduce((acc, s) => acc + (parseFloat(s.pct_of_parent) || 0), 0), 1);
+    const remainingPct = Math.max(0, roundTo(100 - usedPct, 1));
+
+    if (pct > (remainingPct + 0.1)) {
+      alert(`⚠️ Cannot add subplot: ${pct}% exceeds the available remaining allocation (${remainingPct}%). Total subplots cannot exceed 100%.`);
+      return;
+    }
+
+    if (pct <= 0) {
+      alert('⚠️ Please enter a percentage greater than 0%.');
+      return;
+    }
 
     const lat = pendingSubplotLatLng ? pendingSubplotLatLng[0] : drawingMainPlot.lat;
     const lng = pendingSubplotLatLng ? pendingSubplotLatLng[1] : drawingMainPlot.lng;
@@ -1290,7 +1452,7 @@
 
     subplotModal.style.display = 'none';
     updateDrawingStatusText();
-    showToast(`Added ${code}: ${variety} (${areaHa} ha). Tap Done to save.`);
+    showToast(`Added ${code}: ${variety} (${pct}%, ${areaHa} ha)`);
   }
 
   // --- Render Subplots on Leaflet Map ---
@@ -1363,12 +1525,40 @@
     if (!selectedPlot) {
       subplotsCountBadge.textContent = '0';
       subplotsList.innerHTML = '<div class="subplots-empty">Select a plot to view subplots.</div>';
+      if (drawerAllocTracker) drawerAllocTracker.style.display = 'none';
       return;
     }
 
     const plotSubplots = subplots.filter((s) => s.parent_plot_id === selectedPlot.id);
     const plotLines = divisionLines[selectedPlot.id] || [];
+    const parentHa = selectedPlot.area_ha || 1.0;
     subplotsCountBadge.textContent = plotSubplots.length.toString();
+
+    // Allocation progress tracker
+    if (drawerAllocTracker) {
+      if (plotSubplots.length > 0) {
+        drawerAllocTracker.style.display = 'flex';
+        const totalPct = roundTo(
+          plotSubplots.reduce((acc, s) => acc + (parseFloat(s.pct_of_parent) || 0), 0),
+          1
+        );
+        const isComplete = totalPct >= 99.5;
+
+        if (isComplete) {
+          drawerAllocBadge.textContent = `✓ 100% (${parentHa.toFixed(2)} ha)`;
+          drawerAllocBadge.className = 'tracker-badge complete';
+          drawerAllocFill.style.width = '100%';
+          drawerAllocFill.className = 'tracker-fill complete';
+        } else {
+          drawerAllocBadge.textContent = `${totalPct}% (${roundTo(100 - totalPct, 1)}% remaining)`;
+          drawerAllocBadge.className = 'tracker-badge pending';
+          drawerAllocFill.style.width = `${Math.min(100, totalPct)}%`;
+          drawerAllocFill.className = 'tracker-fill';
+        }
+      } else {
+        drawerAllocTracker.style.display = 'none';
+      }
+    }
 
     if (plotSubplots.length === 0 && plotLines.length === 0) {
       subplotsList.innerHTML = `
@@ -1608,10 +1798,16 @@
     // My Location
     btnMyLocation.addEventListener('click', centerOnUserLocation);
 
-    // Drawer handle
+    // Drawer handle & Close button
     drawerToggle.addEventListener('click', () => {
       plotDrawer.classList.toggle('closed');
     });
+    if (btnClosePlotDrawer) {
+      btnClosePlotDrawer.addEventListener('click', (e) => {
+        e.stopPropagation();
+        plotDrawer.classList.add('closed');
+      });
+    }
 
     // Navigation buttons
     if (btnDriveDirections) {
@@ -1636,15 +1832,27 @@
     btnCloseModal.addEventListener('click', () => (subplotModal.style.display = 'none'));
     btnCancelModal.addEventListener('click', () => (subplotModal.style.display = 'none'));
 
-    // Dynamic % calculation when user edits Area (ha)
-    subplotAreaHa.addEventListener('input', () => {
-      const val = parseFloat(subplotAreaHa.value);
+    // Two-way synchronization between Subplot % and Area (ha)
+    subplotAreaPct.addEventListener('input', () => {
+      const pct = parseFloat(subplotAreaPct.value);
       const parentHa = (drawingMainPlot && drawingMainPlot.area_ha) ? drawingMainPlot.area_ha : 1;
-      if (!isNaN(val) && val >= 0 && parentHa > 0) {
-        subplotAreaPct.value = `${((val / parentHa) * 100).toFixed(1)}%`;
-      } else {
+      if (!isNaN(pct) && pct > 0 && parentHa > 0) {
+        subplotAreaHa.value = roundTo((pct / 100) * parentHa, 2);
+      } else if (isNaN(pct) || pct <= 0) {
+        subplotAreaHa.value = '';
+      }
+      validateSubplotAllocation();
+    });
+
+    subplotAreaHa.addEventListener('input', () => {
+      const ha = parseFloat(subplotAreaHa.value);
+      const parentHa = (drawingMainPlot && drawingMainPlot.area_ha) ? drawingMainPlot.area_ha : 1;
+      if (!isNaN(ha) && ha > 0 && parentHa > 0) {
+        subplotAreaPct.value = roundTo((ha / parentHa) * 100, 1);
+      } else if (isNaN(ha) || ha <= 0) {
         subplotAreaPct.value = '';
       }
+      validateSubplotAllocation();
     });
 
     subplotVariety.addEventListener('change', () => {

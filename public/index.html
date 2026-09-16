@@ -188,6 +188,13 @@
               </svg>
               Undo
             </button>
+            <button id="btn-clear-lines" class="hud-btn" title="Clear dividing lines">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+              </svg>
+              Clear
+            </button>
             <button id="btn-finish-drawing" class="hud-btn hud-finish-btn" title="Save subplots and return to plot view">
               <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5">
                 <polyline points="20 6 9 17 4 12"></polyline>
@@ -382,25 +389,24 @@
           </div>
 
           <div class="form-group">
-            <label for="subplot-code">Subplot Code / Number *</label>
-            <input type="text" id="subplot-code" placeholder="e.g. Subplot 1, 1a" required autocomplete="off" />
+            <label for="subplot-code">Subplot Name *</label>
+            <input type="text" id="subplot-code" placeholder="Please enter subplot name" required autocomplete="off" />
           </div>
 
           <div class="form-group">
             <label for="subplot-variety">Rice Variety *</label>
             <select id="subplot-variety">
-              <option value="Phka Rumduol">Phka Rumduol (ផ្ការំដួល - Premium Jasmine)</option>
-              <option value="Sen Kra-Ob">Sen Kra-Ob (សែនក្រអូប - Fragrant)</option>
-              <option value="Phka Romdeng">Phka Romdeng (ផ្ការំដេង)</option>
-              <option value="Kranhao">Kranhao (ក្រញ៉ៅ - Traditional)</option>
-              <option value="Dry Season Rice">Dry Season Rice (ស្រូវប្រាំង)</option>
-              <option value="Wet Season Traditional">Wet Season Traditional (ស្រូវវស្សា)</option>
-              <option value="Other">Other (Custom Variety)...</option>
+              <option value="Phka Rumduol">Phka Rumduol</option>
+              <option value="Red Jasmine">Red Jasmine</option>
+              <option value="Local Variety">Local Variety</option>
+              <option value="Sticky Rice">Sticky Rice</option>
+              <option value="Other">Other</option>
+              <option value="Fallow">Fallow</option>
             </select>
           </div>
 
           <div class="form-group" id="custom-variety-group" style="display: none;">
-            <label for="subplot-custom-variety">Custom Variety Name *</label>
+            <label for="subplot-custom-variety">Specify Variety Name *</label>
             <input type="text" id="subplot-custom-variety" placeholder="Enter variety name" autocomplete="off" />
           </div>
 

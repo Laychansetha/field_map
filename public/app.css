@@ -1135,28 +1135,44 @@ html, body {
   color: #facc15;
 }
 
-.subplot-map-badge.variety-senkraob {
+.subplot-map-badge.variety-redjasmine {
+  border-color: #ef4444;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.65), 0 0 10px rgba(239, 68, 68, 0.4);
+}
+.subplot-map-badge.variety-redjasmine .sp-variety {
+  color: #f87171;
+}
+
+.subplot-map-badge.variety-local {
   border-color: #22c55e;
   box-shadow: 0 4px 14px rgba(0, 0, 0, 0.65), 0 0 10px rgba(34, 197, 94, 0.4);
 }
-.subplot-map-badge.variety-senkraob .sp-variety {
+.subplot-map-badge.variety-local .sp-variety {
   color: #4ade80;
 }
 
-.subplot-map-badge.variety-romdeng {
-  border-color: #a855f7;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.65), 0 0 10px rgba(168, 85, 247, 0.4);
+.subplot-map-badge.variety-stickyrice {
+  border-color: #f59e0b;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.65), 0 0 10px rgba(245, 158, 11, 0.4);
 }
-.subplot-map-badge.variety-romdeng .sp-variety {
-  color: #c084fc;
+.subplot-map-badge.variety-stickyrice .sp-variety {
+  color: #fbbf24;
+}
+
+.subplot-map-badge.variety-fallow {
+  border-color: #94a3b8;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.65), 0 0 10px rgba(148, 163, 184, 0.4);
+}
+.subplot-map-badge.variety-fallow .sp-variety {
+  color: #cbd5e1;
 }
 
 .subplot-map-badge.variety-other {
-  border-color: #f97316;
-  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.65), 0 0 10px rgba(249, 115, 22, 0.4);
+  border-color: #06b6d4;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.65), 0 0 10px rgba(6, 182, 212, 0.4);
 }
 .subplot-map-badge.variety-other .sp-variety {
-  color: #fb923c;
+  color: #22d3ee;
 }
 
 .form-row-two {
@@ -1297,22 +1313,34 @@ html, body {
   border: 1px solid rgba(228, 168, 52, 0.4);
 }
 
-.variety-senkraob {
+.variety-redjasmine {
+  background: rgba(239, 68, 68, 0.2);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.4);
+}
+
+.variety-local {
   background: rgba(34, 197, 94, 0.2);
   color: #4ade80;
   border: 1px solid rgba(34, 197, 94, 0.4);
 }
 
-.variety-romdeng {
-  background: rgba(168, 85, 247, 0.2);
-  color: #c084fc;
-  border: 1px solid rgba(168, 85, 247, 0.4);
+.variety-stickyrice {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
+
+.variety-fallow {
+  background: rgba(148, 163, 184, 0.2);
+  color: #cbd5e1;
+  border: 1px solid rgba(148, 163, 184, 0.4);
 }
 
 .variety-other {
-  background: rgba(59, 130, 246, 0.2);
-  color: #60a5fa;
-  border: 1px solid rgba(59, 130, 246, 0.4);
+  background: rgba(6, 182, 212, 0.2);
+  color: #22d3ee;
+  border: 1px solid rgba(6, 182, 212, 0.4);
 }
 
 .subplot-card-meta {

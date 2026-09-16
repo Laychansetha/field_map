@@ -51,6 +51,7 @@
   let drawingBoundaryRings = []; // [[lat,lng], ...] rings of main plot for containment check
   let mainPlotGuideLayer = null; // highlighted boundary guide while drawing
   let isFullscreenDrawing = false; // whether header is hidden
+  let sessionBackup = null; // snapshot before current drawing session
 
   // --- DOM Elements ---
   const quickSearchInput = document.getElementById('quick-search');
@@ -106,6 +107,7 @@
   const btnModeDrawLine = document.getElementById('btn-mode-draw-line');
   const btnModeAddLabel = document.getElementById('btn-mode-add-label');
   const btnUndoPoint = document.getElementById('btn-undo-point');
+  const btnClearLines = document.getElementById('btn-clear-lines');
   const btnFinishDrawing = document.getElementById('btn-finish-drawing');
   const btnCancelDrawing = document.getElementById('btn-cancel-drawing');
   const btnStartDrawing = document.getElementById('btn-start-drawing');
@@ -686,6 +688,13 @@
     if (pendingClickMarker) { map.removeLayer(pendingClickMarker); pendingClickMarker = null; }
     if (tempStrokeLayer) { map.removeLayer(tempStrokeLayer); tempStrokeLayer = null; }
 
+    // Snapshot state before session begins so Cancel can completely discard any changes
+    sessionBackup = {
+      plotId: plot.id,
+      divisionLines: JSON.parse(JSON.stringify(divisionLines[plot.id] || [])),
+      subplots: JSON.parse(JSON.stringify(subplots))
+    };
+
     // Extract main plot boundary rings
     extractDrawingBoundaryRings(plot);
 
@@ -1022,7 +1031,6 @@
       divisionLines[drawingMainPlot.id] = [];
     }
     divisionLines[drawingMainPlot.id].push(clipped);
-    saveStoredSubplots();
 
     const layers = renderSingleDivisionLine(clipped, true);
 
@@ -1086,7 +1094,6 @@
 
     const plotSubplots = subplots.filter((s) => s.parent_plot_id === drawingMainPlot.id);
     const existingCount = plotSubplots.length;
-    const autoLabel = String.fromCharCode(65 + existingCount); // A, B, C...
 
     const parentHa = drawingMainPlot.area_ha || 1.0;
     const usedHa = plotSubplots.reduce((acc, s) => acc + (s.area_ha || 0), 0);
@@ -1097,7 +1104,9 @@
       : roundTo(parentHa / (existingCount + 2), 2);
 
     modalPlotRef.textContent = `Family ${drawingMainPlot.family_id} · Plot ${drawingMainPlot.plot_id} (${drawingMainPlot.village})`;
-    subplotCode.value = `Subplot ${autoLabel}`;
+    // Do not prefill default name - use placeholder as requested
+    subplotCode.value = '';
+    subplotCode.placeholder = 'Please enter subplot name';
     subplotVariety.value = 'Phka Rumduol';
     customVarietyGroup.style.display = 'none';
     subplotCustomVariety.value = '';
@@ -1149,11 +1158,12 @@
       showToast(`Undid ${item.subplot.code}`);
     }
 
-    saveStoredSubplots();
     updateDrawingStatusText();
   }
 
   function finishSubplotDrawing() {
+    // Commit all changes made in this session
+    sessionBackup = null;
     saveStoredSubplots();
     exitFullscreenDrawingMode();
     renderAllStoredSubplotsOnMap();
@@ -1161,17 +1171,62 @@
       renderSubplotsListForSelectedPlot();
       plotDrawer.classList.remove('closed');
     }
-    showToast(`✅ Saved subplots for Plot ${drawingMainPlot.plot_id}`);
+    showToast(`✅ Saved subplots for Plot ${drawingMainPlot ? drawingMainPlot.plot_id : ''}`);
   }
 
   function cancelSubplotDrawing() {
+    // Completely discard all unsaved changes from the current session
+    if (sessionBackup) {
+      if (sessionBackup.divisionLines && sessionBackup.divisionLines.length > 0) {
+        divisionLines[sessionBackup.plotId] = JSON.parse(JSON.stringify(sessionBackup.divisionLines));
+      } else {
+        delete divisionLines[sessionBackup.plotId];
+      }
+      subplots = JSON.parse(JSON.stringify(sessionBackup.subplots));
+      sessionBackup = null;
+      saveStoredSubplots();
+    }
+
+    if (pendingClickMarker) {
+      map.removeLayer(pendingClickMarker);
+      pendingClickMarker = null;
+    }
+    if (tempStrokeLayer) {
+      map.removeLayer(tempStrokeLayer);
+      tempStrokeLayer = null;
+    }
+    pendingClickPoint = null;
+    isMouseDownDrawing = false;
+    currentStrokePoints = [];
+
+    drawingSessionLayers.forEach((l) => map.removeLayer(l));
+    drawingSessionLayers = [];
+    drawingUndoStack = [];
+
     exitFullscreenDrawingMode();
     renderAllStoredSubplotsOnMap();
     if (selectedPlot) {
       renderSubplotsListForSelectedPlot();
       plotDrawer.classList.remove('closed');
     }
-    showToast('Drawing closed');
+    showToast('Drawing cancelled — unsaved changes discarded');
+  }
+
+  function clearCurrentPlotDivisionLines() {
+    if (!drawingMainPlot) return;
+    if (confirm(`Clear all dividing lines for Plot ${drawingMainPlot.plot_id}?`)) {
+      delete divisionLines[drawingMainPlot.id];
+      drawingSessionLayers = drawingSessionLayers.filter((layer) => {
+        if (layer instanceof L.Polyline && !(layer instanceof L.Polygon)) {
+          map.removeLayer(layer);
+          return false;
+        }
+        return true;
+      });
+      drawingUndoStack = drawingUndoStack.filter((item) => item.type !== 'line');
+      updateDrawingStatusText();
+      showToast('Dividing lines cleared');
+    }
   }
 
   function onSubplotFormSubmit(e) {
@@ -1213,7 +1268,6 @@
     };
 
     subplots.push(newSubplot);
-    saveStoredSubplots();
 
     // Create badge marker on map
     const badgeMarker = renderSingleSubplotBadge(newSubplot, true);
@@ -1226,7 +1280,7 @@
 
     subplotModal.style.display = 'none';
     updateDrawingStatusText();
-    showToast(`✅ Saved ${code}: ${variety} (${areaHa} ha)`);
+    showToast(`Added ${code}: ${variety} (${areaHa} ha). Tap Done to save.`);
   }
 
   // --- Render Subplots on Leaflet Map ---
@@ -1269,16 +1323,16 @@
     const v = (variety || '').toLowerCase();
     if (v.includes('rumduol')) {
       return { borderColor: '#e4a834', fillColor: '#facc15', class: 'variety-rumduol' };
-    } else if (v.includes('kra-ob') || v.includes('sen kra')) {
-      return { borderColor: '#16a34a', fillColor: '#22c55e', class: 'variety-senkraob' };
-    } else if (v.includes('romdeng')) {
-      return { borderColor: '#9333ea', fillColor: '#a855f7', class: 'variety-romdeng' };
-    } else if (v.includes('kranhao')) {
-      return { borderColor: '#ea580c', fillColor: '#f97316', class: 'variety-other' };
-    } else if (v.includes('dry')) {
-      return { borderColor: '#0284c7', fillColor: '#38bdf8', class: 'variety-other' };
+    } else if (v.includes('red') || v.includes('jasmine')) {
+      return { borderColor: '#dc2626', fillColor: '#ef4444', class: 'variety-redjasmine' };
+    } else if (v.includes('local')) {
+      return { borderColor: '#16a34a', fillColor: '#22c55e', class: 'variety-local' };
+    } else if (v.includes('sticky')) {
+      return { borderColor: '#d97706', fillColor: '#f59e0b', class: 'variety-stickyrice' };
+    } else if (v.includes('fallow')) {
+      return { borderColor: '#64748b', fillColor: '#94a3b8', class: 'variety-fallow' };
     }
-    return { borderColor: '#00d2ff', fillColor: '#00f0ff', class: 'variety-other' };
+    return { borderColor: '#0891b2', fillColor: '#06b6d4', class: 'variety-other' };
   }
 
   // --- Render Subplots in Bottom Sheet Drawer ---
@@ -1290,9 +1344,10 @@
     }
 
     const plotSubplots = subplots.filter((s) => s.parent_plot_id === selectedPlot.id);
+    const plotLines = divisionLines[selectedPlot.id] || [];
     subplotsCountBadge.textContent = plotSubplots.length.toString();
 
-    if (plotSubplots.length === 0) {
+    if (plotSubplots.length === 0 && plotLines.length === 0) {
       subplotsList.innerHTML = `
         <div class="subplots-empty">
           No subplots sketched yet. Tap <b>"+ Draw Subplot"</b> to sketch rice variety parcels for Plot ${escapeHtml(selectedPlot.plot_id)}.
@@ -1303,6 +1358,30 @@
 
     subplotsList.innerHTML = '';
     const frag = document.createDocumentFragment();
+
+    // If dividing lines exist on this plot, show a banner with clear option
+    if (plotLines.length > 0) {
+      const linesBanner = document.createElement('div');
+      linesBanner.style.cssText =
+        'display:flex;justify-content:space-between;align-items:center;padding:6px 10px;background:rgba(250,204,21,0.12);border:1px solid rgba(250,204,21,0.3);border-radius:var(--radius-sm);font-size:0.8rem;color:#facc15;margin-bottom:8px;';
+      linesBanner.innerHTML = `
+        <span>🌾 <b>${plotLines.length}</b> Dividing Line${plotLines.length > 1 ? 's' : ''}</span>
+        <button id="btn-drawer-clear-lines" style="background:transparent;border:none;color:#f87171;font-size:0.75rem;cursor:pointer;font-weight:700;display:flex;align-items:center;gap:3px;">
+          ✕ Clear Lines
+        </button>
+      `;
+      linesBanner.querySelector('#btn-drawer-clear-lines').addEventListener('click', (e) => {
+        e.stopPropagation();
+        if (confirm(`Remove all dividing lines for Plot ${selectedPlot.plot_id}?`)) {
+          delete divisionLines[selectedPlot.id];
+          saveStoredSubplots();
+          renderAllStoredSubplotsOnMap();
+          renderSubplotsListForSelectedPlot();
+          showToast('Dividing lines removed');
+        }
+      });
+      frag.appendChild(linesBanner);
+    }
 
     plotSubplots.forEach((sp) => {
       const style = getSubplotStyle(sp.variety);
@@ -1521,6 +1600,9 @@
     btnModeDrawLine.addEventListener('click', () => setDrawingMode('line'));
     btnModeAddLabel.addEventListener('click', () => setDrawingMode('label'));
     btnUndoPoint.addEventListener('click', undoLastAction);
+    if (btnClearLines) {
+      btnClearLines.addEventListener('click', clearCurrentPlotDivisionLines);
+    }
     btnFinishDrawing.addEventListener('click', finishSubplotDrawing);
     btnCancelDrawing.addEventListener('click', cancelSubplotDrawing);
 

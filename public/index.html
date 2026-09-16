@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#13382c" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Ibis Navigator" />
+  <title>Ibis Rice Plot Navigator | Field GPS & Directions</title>
+  
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="icon" type="image/png" href="icons/favicon.png" />
+  <link rel="apple-touch-icon" href="icons/icon-192.png" />
+  
+  <!-- Bundled Local Leaflet for 100% Offline Use -->
+  <link rel="stylesheet" href="vendor/leaflet.css" />
+  <script src="vendor/leaflet.js"></script>
+
+  <!-- App Styles -->
+  <link rel="stylesheet" href="app.css" />
+</head>
+<body>
+  <div id="app-container">
+    <!-- Top Header / App Bar -->
+    <header id="top-bar">
+      <div class="header-top">
+        <div class="brand">
+          <div class="brand-icon">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="12 2 19 21 12 17 5 21 12 2" fill="#E4A834" stroke="#D18E1E"></polygon>
+            </svg>
+          </div>
+          <div class="brand-text">
+            <h1>Ibis Rice Navigator</h1>
+            <span class="badge offline-badge" id="offline-badge">
+              <span class="status-dot"></span> Offline Ready
+            </span>
+          </div>
+        </div>
+        
+        <div class="header-actions">
+          <button id="btn-toggle-filters" class="icon-btn" title="Toggle Filters" aria-label="Toggle Filters">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+            </svg>
+          </button>
+          <button id="btn-my-location" class="icon-btn" title="My Location" aria-label="My GPS Location">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="12" cy="12" r="9"></circle>
+              <line x1="12" y1="1" x2="12" y2="5"></line>
+              <line x1="12" y1="19" x2="12" y2="23"></line>
+              <line x1="1" y1="12" x2="5" y2="12"></line>
+              <line x1="19" y1="12" x2="23" y2="12"></line>
+              <circle cx="12" cy="12" r="3" fill="currentColor"></circle>
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Quick Search Bar -->
+      <div class="search-container">
+        <div class="search-input-wrapper">
+          <svg class="search-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input 
+            type="text" 
+            id="quick-search" 
+            placeholder="Search Family ID (e.g. SD041), Plot, or Village..." 
+            autocomplete="off" 
+            spellcheck="false"
+          />
+          <button id="btn-clear-search" class="clear-btn" style="display: none;" aria-label="Clear Search">&times;</button>
+        </div>
+        <!-- Live Autocomplete Results -->
+        <div id="search-suggestions" class="suggestions-box" style="display: none;"></div>
+      </div>
+
+      <!-- Landscape Fast Shortcuts -->
+      <div class="landscape-shortcuts" id="landscape-shortcuts">
+        <button class="site-chip" data-site="Siem Pang">🌾 Siem Pang (2.6k)</button>
+        <button class="site-chip" data-site="Preah Vihear">🌾 Preah Vihear (2.1k)</button>
+        <button class="site-chip" data-site="Lumphat">🌾 Lumphat (694)</button>
+        <button class="site-chip" data-site="Prey Lang">🌾 Prey Lang (412)</button>
+        <button class="site-chip" data-site="Keo Seima">🌾 Keo Seima (250)</button>
+        <button class="site-chip" data-site="Vuen Sai">🌾 Vuen Sai (288)</button>
+      </div>
+
+      <!-- Filter Dropdown Accordion Panel -->
+      <div id="filter-panel" class="filter-panel closed">
+        <div class="filter-grid">
+          <div class="filter-group">
+            <label for="filter-site">Site / Landscape</label>
+            <select id="filter-site">
+              <option value="">All Sites (6,427 plots)</option>
+            </select>
+          </div>
+          
+          <div class="filter-group">
+            <label for="filter-village">Village</label>
+            <select id="filter-village" disabled>
+              <option value="">All Villages</option>
+            </select>
+          </div>
+          
+          <div class="filter-group">
+            <label for="filter-family">Family ID</label>
+            <select id="filter-family" disabled>
+              <option value="">All Families</option>
+            </select>
+          </div>
+
+          <div class="filter-group">
+            <label for="filter-plot">Plot</label>
+            <select id="filter-plot" disabled>
+              <option value="">All Plots</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="filter-actions">
+          <span id="filter-status-text">6,427 plots available</span>
+          <div class="filter-buttons">
+            <button id="btn-reset-filters" class="secondary-btn">Reset</button>
+            <button id="btn-apply-filters" class="primary-btn">View on Map</button>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Map Area -->
+    <main id="map-wrapper">
+      <div id="map"></div>
+
+      <!-- Floating Map Controls -->
+      <div class="floating-controls">
+        <button id="btn-layer-toggle" class="float-btn" title="Toggle Satellite / Street Map" aria-label="Basemap">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+            <polyline points="2 17 12 22 22 17"></polyline>
+            <polyline points="2 12 12 17 22 12"></polyline>
+          </svg>
+          <span id="layer-label">Sat</span>
+        </button>
+
+        <button id="btn-fit-plots" class="float-btn" title="Zoom to Visible Plots" aria-label="Fit Plots">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"></path>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Subplot Drawing HUD Toolbar (fullscreen, bottom-anchored) -->
+      <div id="drawing-hud" class="drawing-hud" style="display: none;">
+        <div class="drawing-hud-inner">
+          <div class="drawing-hud-top">
+            <div class="drawing-hud-label">
+              <span class="drawing-badge">✏️ DRAWING SUBPLOT</span>
+              <strong id="drawing-target-label">Plot</strong>
+            </div>
+            <button id="btn-cancel-drawing" class="hud-cancel-btn" title="Cancel drawing">✕ Cancel</button>
+          </div>
+          <div class="drawing-hud-status">
+            <span id="drawing-points-count">Tap inside the plot to place points</span>
+          </div>
+          <div class="drawing-actions">
+            <button id="btn-undo-point" class="hud-btn" title="Undo last point" disabled>
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5">
+                <path d="M9 14L4 9l5-5"/>
+                <path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5v0a5.5 5.5 0 0 1-5.5 5.5H11"/>
+              </svg>
+              Undo
+            </button>
+            <button id="btn-finish-drawing" class="hud-btn hud-finish-btn" title="Complete subplot polygon" disabled>
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+              Finish Subplot
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Field Compass HUD (Activated during field walking) -->
+      <div id="compass-hud" class="compass-hud" style="display: none;">
+        <div class="compass-card">
+          <div class="compass-header">
+            <div class="compass-target-title">
+              <span class="target-label">NAVIGATING TO</span>
+              <strong id="hud-target-name">SD041 - Plot 11</strong>
+            </div>
+            <button id="btn-close-compass" class="hud-close-btn" title="Stop Navigation">&times;</button>
+          </div>
+
+          <div class="compass-body">
+            <div class="compass-dial">
+              <div class="dial-arrow" id="compass-arrow">
+                <svg viewBox="0 0 60 60" width="60" height="60">
+                  <polygon points="30 2, 45 42, 30 34, 15 42" fill="#E4A834" stroke="#B87D1B" stroke-width="2"/>
+                </svg>
+              </div>
+            </div>
+
+            <div class="compass-metrics">
+              <div class="metric-block">
+                <span class="metric-label">DISTANCE</span>
+                <span class="metric-value" id="hud-distance">-- m</span>
+              </div>
+              <div class="metric-block">
+                <span class="metric-label">BEARING</span>
+                <span class="metric-value" id="hud-bearing">--°</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="compass-footer">
+            <span id="hud-gps-accuracy" class="gps-accuracy-text">GPS: Waiting for fix...</span>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- Bottom Plot Details & Directions Sheet -->
+    <section id="plot-drawer" class="plot-drawer closed">
+      <div class="drawer-handle" id="drawer-toggle">
+        <span class="handle-bar"></span>
+      </div>
+
+      <div class="drawer-content" id="drawer-details">
+        <div class="empty-state" id="drawer-empty-state">
+          <p>Tap any plot on the map or search above to view details, navigate, or sketch subplots</p>
+        </div>
+
+        <div class="plot-card" id="drawer-plot-info" style="display: none;">
+          <div class="plot-title-row">
+            <div>
+              <span class="plot-eyebrow" id="card-site">Keo Seima · Srea Chhuk</span>
+              <h2 id="card-heading">Family <span id="card-family">SD041</span> · Plot <span id="card-plot">11</span></h2>
+            </div>
+            <div class="plot-area-badge" id="card-area-badge">
+              <span class="area-value" id="card-area">1.45</span>
+              <span class="area-unit">ha</span>
+            </div>
+          </div>
+
+          <div class="details-grid">
+            <div class="detail-item">
+              <span class="detail-label">Village</span>
+              <strong id="card-village">Sre Andaol</strong>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">Commune</span>
+              <strong id="card-commune">Srea Chhuk</strong>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">Year Joined</span>
+              <strong id="card-year">2022</strong>
+            </div>
+            <div class="detail-item">
+              <span class="detail-label">Coordinates</span>
+              <strong id="card-coords">12.3456, 106.7891</strong>
+            </div>
+          </div>
+
+          <!-- Inspection Subplots Management Section -->
+          <div class="subplots-section">
+            <div class="subplots-header">
+              <div class="subplots-title-group">
+                <span class="section-eyebrow">FIELD INSPECTION</span>
+                <div class="title-with-count">
+                  <h3>Subplots</h3>
+                  <span id="subplots-count-badge" class="badge subplots-badge">0</span>
+                </div>
+              </div>
+              <button id="btn-start-drawing" class="action-btn draw-subplot-btn" title="Sketch subplots within this main plot">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 5v14M5 12h14"></path>
+                </svg>
+                <span>+ Draw Subplot</span>
+              </button>
+            </div>
+            
+            <div id="subplots-list" class="subplots-list">
+              <!-- Dynamically populated or empty placeholder -->
+            </div>
+          </div>
+
+          <!-- Navigation & Action Buttons -->
+          <div class="plot-actions">
+            <!-- 1-Click Driving Directions -->
+            <button id="btn-drive-directions" class="action-btn drive-btn">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.5 2.8C2.1 11 2 11.5 2 12v4c0 .6.4 1 1 1h2"></path>
+                <circle cx="7" cy="17" r="2"></circle>
+                <circle cx="17" cy="17" r="2"></circle>
+              </svg>
+              <span>Drive / Motorbike (Google Maps)</span>
+            </button>
+
+            <!-- Field Walking Compass Mode -->
+            <button id="btn-start-compass" class="action-btn walk-btn">
+              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" fill="currentColor"></polygon>
+              </svg>
+              <span>Field Compass (Walk Bunds)</span>
+            </button>
+
+            <!-- Utility Buttons -->
+            <div class="action-row-secondary">
+              <button id="btn-copy-coords" class="secondary-btn" title="Copy GPS Coordinates">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                </svg>
+                <span>Copy GPS</span>
+              </button>
+
+              <button id="btn-export-kml" class="secondary-btn" title="Download GPX/KML for Handheld GPS / OsmAnd">
+                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="7 10 12 15 17 10"></polyline>
+                  <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+                <span>Export KML</span>
+              </button>
+            </div>
+
+            <!-- Export All Subplots Button -->
+            <button id="btn-export-subplots" class="secondary-btn export-subplots-btn" title="Export all sketched subplots as standard GeoJSON for inspection apps">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+                <line x1="12" y1="18" x2="12" y2="12"></line>
+                <line x1="9" y1="15" x2="15" y2="15"></line>
+              </svg>
+              <span>Export Subplots (GeoJSON)</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Modal Dialog for Saving Subplot -->
+    <div id="subplot-modal" class="modal-backdrop" style="display: none;">
+      <div class="modal-card">
+        <div class="modal-header">
+          <div>
+            <span class="modal-eyebrow" id="modal-plot-ref">Family SD041 · Plot 11</span>
+            <h2>Save Subplot Details</h2>
+          </div>
+          <button id="btn-close-modal" class="modal-close" aria-label="Close dialog">&times;</button>
+        </div>
+        
+        <form id="subplot-form" class="modal-body">
+          <div class="computed-area-box">
+            <div class="area-stat">
+              <span class="stat-label">SUBPLOT AREA</span>
+              <strong id="modal-calc-ha">0.00 ha</strong>
+              <span id="modal-calc-m2" class="stat-sub">0 m²</span>
+            </div>
+            <div class="area-pct">
+              <span class="stat-label">% OF MAIN PLOT</span>
+              <strong id="modal-calc-pct">0.0%</strong>
+            </div>
+          </div>
+
+          <div class="form-group">
+            <label for="subplot-code">Subplot Code / Number *</label>
+            <input type="text" id="subplot-code" placeholder="e.g. Subplot 1, 1a" required autocomplete="off" />
+          </div>
+
+          <div class="form-group">
+            <label for="subplot-variety">Rice Variety *</label>
+            <select id="subplot-variety">
+              <option value="Phka Rumduol">Phka Rumduol (ផ្ការំដួល - Premium Jasmine)</option>
+              <option value="Sen Kra-Ob">Sen Kra-Ob (សែនក្រអូប - Fragrant)</option>
+              <option value="Phka Romdeng">Phka Romdeng (ផ្ការំដេង)</option>
+              <option value="Kranhao">Kranhao (ក្រញ៉ៅ - Traditional)</option>
+              <option value="Dry Season Rice">Dry Season Rice (ស្រូវប្រាំង)</option>
+              <option value="Wet Season Traditional">Wet Season Traditional (ស្រូវវស្សា)</option>
+              <option value="Other">Other (Custom Variety)...</option>
+            </select>
+          </div>
+
+          <div class="form-group" id="custom-variety-group" style="display: none;">
+            <label for="subplot-custom-variety">Custom Variety Name *</label>
+            <input type="text" id="subplot-custom-variety" placeholder="Enter variety name" autocomplete="off" />
+          </div>
+
+          <div class="form-group">
+            <label for="subplot-notes">Inspection Notes (Optional)</label>
+            <textarea id="subplot-notes" rows="2" placeholder="e.g. Planting date, certified organic, crop condition..."></textarea>
+          </div>
+
+          <div class="modal-footer">
+            <button type="button" id="btn-cancel-modal" class="secondary-btn">Cancel</button>
+            <button type="submit" class="primary-btn save-btn">Save Subplot</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast"></div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

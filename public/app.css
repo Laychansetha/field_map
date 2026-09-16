@@ -1,0 +1,1494 @@
+/* ==========================================================
+   IBIS RICE FIELD NAVIGATOR - MODERN MOBILE-FIRST STYLESHEET
+   ========================================================== */
+
+:root {
+  --bg-primary: #0e1e17;
+  --bg-surface: #142a21;
+  --bg-surface-elevated: #1a362a;
+  --bg-input: #1b382d;
+  --border-color: rgba(255, 255, 255, 0.12);
+  --border-accent: #e4a834;
+  
+  --brand-green: #1a533f;
+  --brand-green-light: #287a5e;
+  --brand-gold: #e4a834;
+  --brand-gold-hover: #f5ba48;
+  
+  --text-primary: #ffffff;
+  --text-secondary: #c0cfc7;
+  --text-muted: #88a195;
+  
+  --success-color: #22c55e;
+  --warning-color: #f59e0b;
+  --danger-color: #ef4444;
+  
+  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.25);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.35);
+  --shadow-lg: 0 10px 30px rgba(0, 0, 0, 0.5);
+  
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 20px;
+  --radius-full: 9999px;
+  
+  --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+}
+
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html, body {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  font-family: var(--font-family);
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+#app-container {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+}
+
+/* ==========================================================
+   TOP BAR & SEARCH
+   ========================================================== */
+#top-bar {
+  position: relative;
+  z-index: 1000;
+  background: rgba(14, 30, 23, 0.95);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--border-color);
+  padding: 10px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-shadow: var(--shadow-md);
+}
+
+.header-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.brand-icon {
+  width: 34px;
+  height: 34px;
+  background: linear-gradient(135deg, #1b4b39, #0d281e);
+  border: 1px solid rgba(228, 168, 52, 0.4);
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.brand-text h1 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  color: #fff;
+  line-height: 1.2;
+}
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.72rem;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  font-weight: 500;
+}
+
+.offline-badge {
+  background: rgba(34, 197, 94, 0.15);
+  color: #4ade80;
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background-color: currentColor;
+  box-shadow: 0 0 6px currentColor;
+}
+
+.header-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.icon-btn {
+  width: 38px;
+  height: 38px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-color);
+  background: var(--bg-surface);
+  color: var(--text-primary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.icon-btn:hover, .icon-btn:active {
+  background: var(--bg-surface-elevated);
+  border-color: var(--brand-gold);
+  color: var(--brand-gold);
+}
+
+.icon-btn.active {
+  background: var(--brand-gold);
+  color: #12291e;
+  border-color: var(--brand-gold);
+}
+
+/* Search Box */
+.search-container {
+  position: relative;
+  width: 100%;
+}
+
+.search-input-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.search-icon {
+  position: absolute;
+  left: 12px;
+  color: var(--brand-gold);
+  pointer-events: none;
+}
+
+#quick-search {
+  width: 100%;
+  height: 42px;
+  padding: 8px 36px 8px 38px;
+  border-radius: var(--radius-md);
+  background: var(--bg-input);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #fff;
+  font-size: 0.95rem;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+#quick-search:focus {
+  border-color: var(--brand-gold);
+  box-shadow: 0 0 0 3px rgba(228, 168, 52, 0.2);
+}
+
+#quick-search::placeholder {
+  color: var(--text-muted);
+}
+
+.clear-btn {
+  position: absolute;
+  right: 8px;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+  border: none;
+  color: #fff;
+  font-size: 1.1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+
+/* Autocomplete Suggestions */
+.suggestions-box {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-lg);
+  max-height: 280px;
+  overflow-y: auto;
+  z-index: 1010;
+}
+
+.suggestion-item {
+  padding: 10px 14px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  cursor: pointer;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  transition: background 0.15s;
+}
+
+.suggestion-item:last-child {
+  border-bottom: none;
+}
+
+.suggestion-item:hover, .suggestion-item.active {
+  background: var(--bg-surface-elevated);
+}
+
+.suggestion-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.suggestion-title {
+  font-weight: 600;
+  color: #fff;
+}
+
+.suggestion-title mark {
+  background: rgba(228, 168, 52, 0.35);
+  color: #ffde8a;
+  border-radius: 2px;
+  padding: 0 2px;
+}
+
+.suggestion-subtitle {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+}
+
+.suggestion-tag {
+  font-size: 0.72rem;
+  padding: 3px 7px;
+  border-radius: var(--radius-full);
+  background: rgba(228, 168, 52, 0.15);
+  color: var(--brand-gold);
+  border: 1px solid rgba(228, 168, 52, 0.3);
+  font-weight: 600;
+}
+
+/* Landscape Quick Shortcuts */
+.landscape-shortcuts {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: none; /* Firefox */
+}
+
+.landscape-shortcuts::-webkit-scrollbar {
+  display: none; /* Chrome/Safari */
+}
+
+.site-chip {
+  flex-shrink: 0;
+  background: rgba(20, 42, 33, 0.85);
+  border: 1px solid rgba(228, 168, 52, 0.3);
+  color: #e2e8f0;
+  font-size: 0.76rem;
+  font-weight: 600;
+  padding: 5px 12px;
+  border-radius: var(--radius-full);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.site-chip:hover, .site-chip.active {
+  background: var(--brand-gold);
+  color: #0d281e;
+  border-color: var(--brand-gold);
+  font-weight: 700;
+  box-shadow: 0 2px 8px rgba(228, 168, 52, 0.35);
+}
+
+/* ==========================================================
+   FILTER ACCORDION PANEL
+   ========================================================== */
+.filter-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  transition: max-height 0.3s ease, opacity 0.25s ease;
+  max-height: 400px;
+  opacity: 1;
+  overflow: hidden;
+}
+
+.filter-panel.closed {
+  max-height: 0;
+  opacity: 0;
+  padding-top: 0;
+  border-top: none;
+  pointer-events: none;
+}
+
+.filter-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+@media (max-width: 480px) {
+  .filter-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.filter-group label {
+  font-size: 0.76rem;
+  font-weight: 600;
+  color: var(--brand-gold);
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.filter-group select {
+  height: 38px;
+  padding: 6px 10px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  color: #fff;
+  font-size: 0.88rem;
+  outline: none;
+}
+
+.filter-group select:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.filter-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+
+.filter-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+/* ==========================================================
+   MAP & FLOATING CONTROLS
+   ========================================================== */
+#map-wrapper {
+  flex: 1;
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+#map {
+  width: 100%;
+  height: 100%;
+  background: #11221c;
+}
+
+.floating-controls {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 800;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.float-btn {
+  width: 44px;
+  height: 44px;
+  border-radius: var(--radius-md);
+  background: rgba(20, 42, 33, 0.9);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--border-color);
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: var(--shadow-md);
+  font-size: 0.65rem;
+  font-weight: 600;
+  transition: all 0.15s ease;
+}
+
+.float-btn:hover, .float-btn:active {
+  background: var(--brand-green);
+  border-color: var(--brand-gold);
+  color: var(--brand-gold);
+}
+
+/* ==========================================================
+   FIELD COMPASS HUD (WALKING MODE)
+   ========================================================== */
+.compass-hud {
+  position: absolute;
+  top: 14px;
+  left: 14px;
+  right: 70px;
+  z-index: 850;
+  pointer-events: auto;
+  animation: slideDown 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-15px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.compass-card {
+  background: rgba(14, 30, 23, 0.95);
+  backdrop-filter: blur(12px);
+  border: 2px solid var(--brand-gold);
+  border-radius: var(--radius-lg);
+  padding: 12px 16px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.compass-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  padding-bottom: 6px;
+}
+
+.compass-target-title {
+  display: flex;
+  flex-direction: column;
+}
+
+.target-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--brand-gold);
+  letter-spacing: 0.05em;
+}
+
+.compass-target-title strong {
+  font-size: 0.95rem;
+  color: #fff;
+}
+
+.hud-close-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.compass-body {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.compass-dial {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  border: 2px dashed rgba(228, 168, 52, 0.4);
+  background: rgba(0, 0, 0, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  flex-shrink: 0;
+}
+
+.dial-arrow {
+  width: 60px;
+  height: 60px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.25s cubic-bezier(0.1, 0.9, 0.2, 1);
+}
+
+.compass-metrics {
+  display: flex;
+  flex: 1;
+  gap: 14px;
+}
+
+.metric-block {
+  display: flex;
+  flex-direction: column;
+}
+
+.metric-label {
+  font-size: 0.68rem;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.metric-value {
+  font-size: 1.35rem;
+  font-weight: 800;
+  color: #fff;
+  font-variant-numeric: tabular-nums;
+}
+
+.compass-footer {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+}
+
+/* ==========================================================
+   BOTTOM PLOT DRAWER & FLOATING DESKTOP CARD
+   ========================================================== */
+.plot-drawer {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 900;
+  background: rgba(18, 38, 30, 0.97);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-top: 1px solid rgba(228, 168, 52, 0.35);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.5);
+  transition: transform 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  max-height: min(52vh, 400px);
+  display: flex;
+  flex-direction: column;
+}
+
+.plot-drawer.closed {
+  transform: translateY(calc(100% - 32px));
+}
+
+@media (min-width: 768px) {
+  .plot-drawer {
+    left: 20px;
+    right: auto;
+    bottom: 20px;
+    width: 400px;
+    max-height: calc(100vh - 150px);
+    border: 1px solid rgba(228, 168, 52, 0.4);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-lg);
+  }
+
+  .plot-drawer.closed {
+    transform: translateY(calc(100% + 40px));
+  }
+}
+
+.drawer-handle {
+  width: 100%;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  user-select: none;
+}
+
+.handle-bar {
+  width: 44px;
+  height: 5px;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.drawer-content {
+  padding: 0 16px 20px 16px;
+  overflow-y: auto;
+}
+
+.empty-state {
+  padding: 10px 0;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 0.88rem;
+}
+
+.plot-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.plot-title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  padding-bottom: 10px;
+}
+
+.plot-eyebrow {
+  font-size: 0.78rem;
+  color: var(--brand-gold);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.plot-title-row h2 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.plot-area-badge {
+  background: linear-gradient(135deg, rgba(228, 168, 52, 0.2), rgba(228, 168, 52, 0.08));
+  border: 1px solid rgba(228, 168, 52, 0.4);
+  border-radius: var(--radius-md);
+  padding: 4px 10px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.area-value {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--brand-gold);
+}
+
+.area-unit {
+  font-size: 0.8rem;
+  color: var(--text-secondary);
+  margin-left: 2px;
+}
+
+.details-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 10px 12px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.detail-item {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.detail-label {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+}
+
+.detail-item strong {
+  font-size: 0.92rem;
+  color: #fff;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* Action Buttons */
+.plot-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.action-btn {
+  height: 48px;
+  border-radius: var(--radius-md);
+  border: none;
+  font-size: 0.95rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.action-btn:active {
+  transform: scale(0.98);
+}
+
+.drive-btn {
+  background: #2563eb;
+  color: #fff;
+  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.35);
+}
+
+.drive-btn:hover {
+  background: #1d4ed8;
+}
+
+.walk-btn {
+  background: linear-gradient(135deg, #e4a834, #cf8d1b);
+  color: #11281e;
+  box-shadow: 0 4px 12px rgba(228, 168, 52, 0.35);
+}
+
+.walk-btn:hover {
+  background: var(--brand-gold-hover);
+}
+
+.action-row-secondary {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.primary-btn {
+  background: var(--brand-green);
+  border: 1px solid var(--brand-green-light);
+  color: #fff;
+  padding: 8px 14px;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.secondary-btn {
+  background: var(--bg-surface-elevated);
+  border: 1px solid var(--border-color);
+  color: var(--text-primary);
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  font-size: 0.85rem;
+}
+
+.secondary-btn:hover {
+  background: var(--bg-input);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+/* ==========================================================
+   TOAST NOTIFICATION
+   ========================================================== */
+.toast {
+  position: fixed;
+  bottom: 40px;
+  left: 50%;
+  transform: translateX(-50%) translateY(100px);
+  background: rgba(14, 30, 23, 0.95);
+  border: 1px solid var(--brand-gold);
+  color: #fff;
+  padding: 10px 18px;
+  border-radius: var(--radius-full);
+  font-size: 0.85rem;
+  font-weight: 500;
+  box-shadow: var(--shadow-lg);
+  pointer-events: none;
+  z-index: 2000;
+  opacity: 0;
+  transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.3s ease;
+}
+
+.toast.show {
+  transform: translateX(-50%) translateY(0);
+  opacity: 1;
+}
+
+/* ==========================================================
+   CUSTOM LEAFLET STYLING FOR OUTDOOR SUNLIGHT
+   ========================================================== */
+.leaflet-bar {
+  border: 1px solid var(--border-color) !important;
+  box-shadow: var(--shadow-md) !important;
+  border-radius: var(--radius-md) !important;
+  overflow: hidden;
+}
+
+.leaflet-bar a {
+  background-color: var(--bg-surface) !important;
+  color: #fff !important;
+  border-bottom: 1px solid var(--border-color) !important;
+  width: 36px !important;
+  height: 36px !important;
+  line-height: 36px !important;
+}
+
+.leaflet-bar a:hover {
+  background-color: var(--bg-surface-elevated) !important;
+  color: var(--brand-gold) !important;
+}
+
+/* User GPS Pulse Marker */
+.user-gps-marker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.gps-pulse-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #3b82f6;
+  border: 3px solid #ffffff;
+  box-shadow: 0 0 10px #3b82f6;
+}
+
+.gps-pulse-ring {
+  position: absolute;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 2px solid #3b82f6;
+  animation: gpsPulse 2s infinite ease-out;
+  opacity: 0.8;
+}
+
+@keyframes gpsPulse {
+  0% { transform: scale(0.4); opacity: 1; }
+  100% { transform: scale(1.6); opacity: 0; }
+}
+
+/* Selected Plot Label Tooltip */
+.plot-label-tooltip {
+  background: rgba(14, 30, 23, 0.9) !important;
+  border: 1px solid var(--brand-gold) !important;
+  border-radius: 6px !important;
+  color: #fff !important;
+  font-weight: 600 !important;
+  font-size: 0.78rem !important;
+  padding: 3px 8px !important;
+  box-shadow: var(--shadow-sm) !important;
+}
+
+.plot-label-tooltip::before {
+  border-top-color: var(--brand-gold) !important;
+}
+
+/* ==========================================================
+   FULLSCREEN DRAWING MODE
+   ========================================================== */
+
+/* When drawing is active, app-container adjusts layout */
+#app-container.drawing-fullscreen #top-bar {
+  display: none !important;
+}
+
+#app-container.drawing-fullscreen #map-wrapper {
+  flex: 1;
+  position: relative;
+}
+
+/* ==========================================================
+   SUBPLOT DRAWING HUD (bottom-anchored, fullscreen)
+   ========================================================== */
+.drawing-hud {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 860;
+  pointer-events: auto;
+}
+
+.drawing-hud-inner {
+  background: rgba(10, 22, 18, 0.97);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-top: 2px solid #00f0ff;
+  box-shadow: 0 -8px 32px rgba(0, 240, 255, 0.18), 0 -4px 12px rgba(0,0,0,0.6);
+  padding: 14px 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.drawing-hud-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.drawing-hud-label {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.drawing-badge {
+  font-size: 0.65rem;
+  font-weight: 800;
+  color: #00f0ff;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.drawing-hud-label strong {
+  font-size: 0.95rem;
+  color: #fff;
+  font-weight: 700;
+}
+
+.drawing-hud-status {
+  font-size: 0.8rem;
+  color: var(--brand-gold);
+  font-weight: 600;
+  min-height: 18px;
+}
+
+.drawing-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.hud-btn {
+  flex: 1;
+  height: 48px;
+  border-radius: var(--radius-md);
+  font-size: 0.88rem;
+  font-weight: 700;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid var(--border-color);
+  background: var(--bg-surface-elevated);
+  color: #fff;
+  transition: all 0.15s ease;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+.hud-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+.hud-btn:not(:disabled):active {
+  transform: scale(0.96);
+}
+
+.hud-finish-btn {
+  background: linear-gradient(135deg, #00d2b4, #00f0ff);
+  color: #062e27;
+  border: none;
+  font-size: 0.95rem;
+  box-shadow: 0 4px 16px rgba(0, 240, 255, 0.35);
+}
+
+.hud-finish-btn:not(:disabled):hover {
+  background: linear-gradient(135deg, #00f0c0, #38f9d7);
+  box-shadow: 0 4px 20px rgba(0, 240, 255, 0.5);
+}
+
+.hud-cancel-btn {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  color: #f87171;
+  border-radius: var(--radius-sm);
+  padding: 6px 12px;
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.hud-cancel-btn:hover {
+  background: rgba(239, 68, 68, 0.3);
+}
+
+/* Map active drawing cursor */
+.leaflet-container.drawing-active {
+  cursor: crosshair !important;
+}
+
+/* Numbered vertex marker for drawing points */
+.drawing-vertex-icon {
+  background: #00f0ff;
+  border: 2.5px solid #ffffff;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 10px rgba(0, 240, 255, 0.8), 0 2px 6px rgba(0,0,0,0.5);
+  font-size: 10px;
+  font-weight: 800;
+  color: #062e27;
+  line-height: 1;
+}
+
+.drawing-vertex-icon span {
+  display: block;
+  text-align: center;
+  width: 100%;
+}
+
+
+/* ==========================================================
+   INSPECTION SUBPLOTS SECTION (DRAWER & POPUP)
+   ========================================================== */
+.subplots-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: rgba(0, 0, 0, 0.25);
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.subplots-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.section-eyebrow {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--brand-gold);
+  letter-spacing: 0.05em;
+}
+
+.title-with-count {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.title-with-count h3 {
+  font-size: 1.02rem;
+  color: #fff;
+  font-weight: 700;
+}
+
+.subplots-badge {
+  background: rgba(0, 240, 255, 0.15);
+  color: #00f0ff;
+  border: 1px solid rgba(0, 240, 255, 0.3);
+  font-size: 0.72rem;
+}
+
+.draw-subplot-btn {
+  background: linear-gradient(135deg, #00d2ff, #00a8cc);
+  color: #07221b;
+  font-size: 0.82rem;
+  font-weight: 700;
+  height: 34px;
+  padding: 0 12px;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 3px 10px rgba(0, 210, 255, 0.25);
+  transition: all 0.15s ease;
+}
+
+.draw-subplot-btn:hover {
+  background: #38f9d7;
+}
+
+.subplots-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.subplots-empty {
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  font-style: italic;
+  padding: 4px 0;
+}
+
+.subplot-card-item {
+  background: var(--bg-surface-elevated);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-left: 4px solid #00f0ff;
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+
+.subplot-card-item:hover {
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.subplot-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.subplot-card-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.subplot-card-code {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.variety-tag {
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: var(--radius-full);
+  display: inline-flex;
+  align-items: center;
+}
+
+.variety-rumduol {
+  background: rgba(228, 168, 52, 0.2);
+  color: #facc15;
+  border: 1px solid rgba(228, 168, 52, 0.4);
+}
+
+.variety-senkraob {
+  background: rgba(34, 197, 94, 0.2);
+  color: #4ade80;
+  border: 1px solid rgba(34, 197, 94, 0.4);
+}
+
+.variety-romdeng {
+  background: rgba(168, 85, 247, 0.2);
+  color: #c084fc;
+  border: 1px solid rgba(168, 85, 247, 0.4);
+}
+
+.variety-other {
+  background: rgba(59, 130, 246, 0.2);
+  color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.4);
+}
+
+.subplot-card-meta {
+  font-size: 0.76rem;
+  color: var(--text-secondary);
+}
+
+.subplot-card-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.subplot-action-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.subplot-action-btn:hover {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.15);
+}
+
+.export-subplots-btn {
+  background: rgba(0, 240, 255, 0.12);
+  border-color: rgba(0, 240, 255, 0.35);
+  color: #00f0ff;
+  margin-top: 4px;
+}
+
+.export-subplots-btn:hover {
+  background: rgba(0, 240, 255, 0.22);
+}
+
+/* ==========================================================
+   SUBPLOT SAVE MODAL DIALOG
+   ========================================================== */
+.modal-backdrop {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(6px);
+  z-index: 3000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  animation: fadeIn 0.2s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.modal-card {
+  background: #152d23;
+  border: 1px solid var(--border-color);
+  border-top: 3px solid #00f0ff;
+  border-radius: var(--radius-lg);
+  width: 100%;
+  max-width: 440px;
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.modal-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.modal-eyebrow {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--brand-gold);
+  text-transform: uppercase;
+}
+
+.modal-header h2 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.modal-close {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  font-size: 1.5rem;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.modal-body {
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-height: 75vh;
+  overflow-y: auto;
+}
+
+.computed-area-box {
+  display: flex;
+  justify-content: space-between;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 10px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(0, 240, 255, 0.25);
+}
+
+.area-stat, .area-pct {
+  display: flex;
+  flex-direction: column;
+}
+
+.stat-label {
+  font-size: 0.65rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: 0.04em;
+}
+
+.area-stat strong {
+  font-size: 1.25rem;
+  color: #00f0ff;
+  font-weight: 800;
+}
+
+.stat-sub {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+}
+
+.area-pct strong {
+  font-size: 1.25rem;
+  color: var(--brand-gold);
+  font-weight: 800;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-group label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.form-group input, .form-group select, .form-group textarea {
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: #fff;
+  padding: 10px 12px;
+  font-size: 0.9rem;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.form-group input:focus, .form-group select:focus, .form-group textarea:focus {
+  border-color: #00f0ff;
+  box-shadow: 0 0 0 2px rgba(0, 240, 255, 0.2);
+}
+
+.modal-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.save-btn {
+  background: #00f0ff;
+  color: #0c241c;
+  border-color: #00f0ff;
+  font-weight: 700;
+}
+
+.save-btn:hover {
+  background: #38f9d7;
+}
+
+/* Subplot Popup Styling */
+.plot-popup-content {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 2px;
+}
+
+.popup-title {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #12281e;
+}
+
+.popup-meta {
+  font-size: 0.78rem;
+  color: #4b5563;
+}
+
+.popup-draw-btn {
+  background: #14532d;
+  color: #fff !important;
+  font-size: 0.78rem;
+  font-weight: 600;
+  border: none;
+  border-radius: 4px;
+  padding: 6px 10px;
+  text-align: center;
+  cursor: pointer;
+  text-decoration: none !important;
+  display: inline-block;
+  margin-top: 4px;
+}
+
+.popup-draw-btn:hover {
+  background: #15803d;
+  transform: translateY(-1px);
+}
+
+/* ==========================================================
+   LEAFLET POPUP & TOOLTIP CUSTOM OVERRIDES
+   ========================================================== */
+
+/* Leaflet Popup wrapper for plot clicks */
+.ibis-plot-popup .leaflet-popup-content-wrapper {
+  background: rgba(20, 42, 33, 0.97);
+  border: 1px solid rgba(228, 168, 52, 0.4);
+  border-radius: var(--radius-md);
+  color: #fff;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  padding: 0;
+}
+
+.ibis-plot-popup .leaflet-popup-content {
+  margin: 0;
+  padding: 12px 14px;
+  min-width: 180px;
+}
+
+.ibis-plot-popup .leaflet-popup-tip-container {
+  display: none; /* hide default tip arrow */
+}
+
+/* Leaflet plot hover tooltips */
+.leaflet-tooltip.plot-label-tooltip {
+  background: rgba(14, 30, 23, 0.92);
+  color: #e8f5e9;
+  border: 1px solid rgba(228, 168, 52, 0.35);
+  border-radius: var(--radius-sm);
+  font-size: 0.72rem;
+  padding: 4px 8px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+  white-space: nowrap;
+}
+
+.leaflet-tooltip.plot-label-tooltip::before {
+  display: none;
+}

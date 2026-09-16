@@ -1,0 +1,22 @@
+{
+  "name": "Ibis Rice Field Navigator",
+  "short_name": "Ibis Navigator",
+  "description": "Offline-ready field navigation and plot finder for Ibis Rice conservation teams",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#11221c",
+  "theme_color": "#174233",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

@@ -291,9 +291,15 @@
       }
     });
 
-    // Re-render visible plots on map move/zoom
-    map.on('moveend', throttledRenderVisiblePlots);
-    map.on('zoomend', throttledRenderVisiblePlots);
+    // Re-render visible plots & subplots on map move/zoom
+    map.on('moveend', () => {
+      throttledRenderVisiblePlots();
+      renderAllStoredSubplotsOnMap();
+    });
+    map.on('zoomend', () => {
+      throttledRenderVisiblePlots();
+      renderAllStoredSubplotsOnMap();
+    });
 
     renderAllStoredSubplotsOnMap();
   }
@@ -477,6 +483,7 @@
   // --- Plot Selection & Drawer Display ---
   function selectPlot(plotProps, shouldFly = true) {
     selectedPlot = plotProps;
+    renderAllStoredSubplotsOnMap();
 
     // Reset previous layer highlight
     if (selectedLayer) {
@@ -894,18 +901,21 @@
     const html = `
       <div class="subplot-map-badge-wrap">
         <div class="subplot-map-badge ${style.class}">
-          <span class="sp-icon">🌾</span>
-          <span class="sp-code">${escapeHtml(sp.code)}</span>
-          <span class="sp-variety">${escapeHtml(sp.variety)}</span>
-          <span class="sp-area">${sp.area_ha || 0} ha</span>
+          <div class="sp-line-top">
+            <span class="sp-code">${escapeHtml(sp.code)}</span>
+            <span class="sp-variety">${escapeHtml(sp.variety)}</span>
+          </div>
+          <div class="sp-line-bottom">
+            <span class="sp-area">${sp.area_ha || 0} ha</span>
+          </div>
         </div>
       </div>
     `;
     return L.divIcon({
       className: 'custom-subplot-divicon',
       html: html,
-      iconSize: [160, 32],
-      iconAnchor: [80, 16]
+      iconSize: [110, 36],
+      iconAnchor: [55, 18]
     });
   }
 
@@ -1288,16 +1298,29 @@
     if (subplotsLayerGroup) subplotsLayerGroup.clearLayers();
     if (divisionLinesLayerGroup) divisionLinesLayerGroup.clearLayers();
 
-    // Render all saved division lines
-    Object.keys(divisionLines).forEach((plotId) => {
-      const lines = divisionLines[plotId] || [];
-      lines.forEach((lineCoords) => {
-        renderSingleDivisionLine(lineCoords, false);
-      });
+    // Subplots & division lines should ONLY appear when zoomed in close (zoom >= 15)
+    // to the selected plot, or during an active drawing session.
+    // This keeps the wider map clean and uncluttered when viewing multiple plots.
+    const currentZoom = map ? map.getZoom() : 0;
+    const isCloseZoom = currentZoom >= 15;
+
+    const activePlot = isFullscreenDrawing ? drawingMainPlot : (isCloseZoom ? selectedPlot : null);
+    if (!activePlot) {
+      return;
+    }
+
+    const targetPlotId = activePlot.id;
+
+    // Render division lines for the active plot only
+    const plotLines = divisionLines[targetPlotId] || [];
+    plotLines.forEach((lineCoords) => {
+      renderSingleDivisionLine(lineCoords, false);
     });
 
-    // Render all saved subplots (polygons if any, plus badge markers)
+    // Render subplots (polygons if any, plus badge markers) for the active plot only
     subplots.forEach((sp) => {
+      if (sp.parent_plot_id !== targetPlotId) return;
+
       if (sp.coordinates && sp.coordinates.length >= 3) {
         const style = getSubplotStyle(sp.variety);
         const poly = L.polygon(sp.coordinates, {
@@ -1591,7 +1614,9 @@
     });
 
     // Navigation buttons
-    btnDriveDirections.addEventListener('click', launchDrivingDirections);
+    if (btnDriveDirections) {
+      btnDriveDirections.addEventListener('click', launchDrivingDirections);
+    }
     btnStartCompass.addEventListener('click', startWalkingCompassMode);
     btnCloseCompass.addEventListener('click', stopWalkingCompassMode);
 

@@ -2325,12 +2325,12 @@ html, body {
 .export-panel {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding: 4px 0;
+  gap: 8px;
+  padding: 4px 0 2px;
 }
 
 .export-panel-title {
-  font-size: 0.72rem;
+  font-size: 0.74rem;
   font-weight: 700;
   color: var(--text-muted);
   text-transform: uppercase;
@@ -2338,39 +2338,39 @@ html, body {
   margin-bottom: 2px;
 }
 
-.export-btn-row {
+.export-single-excel-btn {
+  width: 100%;
+  height: 44px;
   display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.export-type-btn {
-  flex: 1;
-  min-width: 100px;
-  background: rgba(0,240,255,0.08);
-  border: 1px solid rgba(0,240,255,0.25);
-  border-radius: var(--radius-sm);
-  color: #00f0ff;
-  font-size: 0.78rem;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: rgba(234, 179, 8, 0.12);
+  border: 1px solid rgba(234, 179, 8, 0.4);
+  border-radius: 9px;
+  color: #fde047;
+  font-size: 0.88rem;
   font-weight: 700;
-  padding: 9px 8px;
   cursor: pointer;
-  text-align: center;
-  transition: background 0.15s;
+  transition: all 0.15s ease;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
 }
 
-.export-type-btn:hover {
-  background: rgba(0,240,255,0.18);
+.export-single-excel-btn svg {
+  color: #fde047;
+  flex-shrink: 0;
 }
 
-.export-type-btn.csv {
-  color: #fde68a;
-  border-color: rgba(234,179,8,0.4);
-  background: rgba(234,179,8,0.08);
+.export-single-excel-btn:hover {
+  background: rgba(234, 179, 8, 0.22);
+  border-color: #facc15;
+  color: #ffffff;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(234, 179, 8, 0.3);
 }
 
-.export-type-btn.csv:hover {
-  background: rgba(234,179,8,0.18);
+.export-single-excel-btn:active {
+  transform: translateY(0);
 }
 
 /* ==========================================================

@@ -1054,13 +1054,18 @@
               </button>
             </div>
 
-            <div class="export-panel" style="margin-top: 14px;">
-              <div class="export-panel-title">Export ICS 2026 Data</div>
-              <div class="export-btn-row">
-                <button type="button" class="export-type-btn csv" id="btn-export-ics-csv">📊 CSV Report</button>
-                <button type="button" class="export-type-btn" id="btn-export-ics-json">📋 SurveySolutions JSON</button>
-                <button type="button" class="export-type-btn" id="btn-export-full-geojson">🗺 Full GeoJSON</button>
-              </div>
+            <div class="export-panel" style="margin-top: 16px;">
+              <div class="export-panel-title">Export Inspection Report</div>
+              <button type="button" class="export-single-excel-btn" id="btn-export-ics-csv">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <polyline points="14 2 14 8 20 8"></polyline>
+                  <line x1="8" y1="13" x2="16" y2="13"></line>
+                  <line x1="8" y1="17" x2="16" y2="17"></line>
+                  <polyline points="10 9 9 9 8 9"></polyline>
+                </svg>
+                <span>Export Excel Report (.csv)</span>
+              </button>
             </div>
           </div>
           <!-- End drawer-scrollable-body -->

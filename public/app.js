@@ -97,8 +97,6 @@
 
   const btnDriveDirections = document.getElementById('btn-drive-directions');
   const btnStartCompass = document.getElementById('btn-start-compass');
-  const btnCopyCoords = document.getElementById('btn-copy-coords');
-  const btnExportKml = document.getElementById('btn-export-kml');
 
   // Subplot Elements
   const drawingHud = document.getElementById('drawing-hud');
@@ -113,7 +111,6 @@
   const btnStartDrawing = document.getElementById('btn-start-drawing');
   const subplotsList = document.getElementById('subplots-list');
   const subplotsCountBadge = document.getElementById('subplots-count-badge');
-  const btnExportSubplots = document.getElementById('btn-export-subplots');
 
   // Subplot Modal Elements
   const subplotModal = document.getElementById('subplot-modal');
@@ -2034,29 +2031,9 @@
       }
     });
 
-    // Export Subplots
-    btnExportSubplots.addEventListener('click', exportSubplotsGeoJSON);
-
-    // Copy Coordinates & Export Plot KML
-    btnCopyCoords.addEventListener('click', () => {
-      if (!selectedPlot) return;
-      const text = `${selectedPlot.lat.toFixed(6)}, ${selectedPlot.lng.toFixed(6)}`;
-      navigator.clipboard.writeText(text).then(() => {
-        showToast(`Copied: ${text}`);
-      });
-    });
-
-    btnExportKml.addEventListener('click', exportPlotKML);
-
-    // ICS 2026 Export Buttons
+    // ICS 2026 Single Excel Report Button (1 export per farmer)
     const btnExportIcsCsv = document.getElementById('btn-export-ics-csv');
     if (btnExportIcsCsv) btnExportIcsCsv.addEventListener('click', exportICSCsv);
-
-    const btnExportIcsJson = document.getElementById('btn-export-ics-json');
-    if (btnExportIcsJson) btnExportIcsJson.addEventListener('click', exportICSJson);
-
-    const btnExportFullGeo = document.getElementById('btn-export-full-geojson');
-    if (btnExportFullGeo) btnExportFullGeo.addEventListener('click', exportFullGeoJSON);
 
     const btnExportAll = document.getElementById('btn-export-all');
     if (btnExportAll) {
@@ -3252,6 +3229,11 @@
     setBannerText('banner-postharvest-family', familyId);
     setBannerText('banner-confirm-family', familyId);
 
+    const btnExportLabel = document.getElementById('btn-export-ics-csv-label');
+    if (btnExportLabel) {
+      btnExportLabel.textContent = `Export Farmer Report (.csv) · Family ${familyId}`;
+    }
+
     // Registered Parcels Switcher for this Farmer
     const familyParcelsBox = document.getElementById('family-parcels-container');
     const familyParcelsList = document.getElementById('family-parcels-list');
@@ -3676,6 +3658,27 @@
 
   // --- Export ICS 2026 CSV (Hierarchy: Farmer -> Parcel -> Subplot -> Harvest) ---
   function exportICSCsv() {
+    const targetFid = (selectedPlot && selectedPlot.family_id) ? selectedPlot.family_id : null;
+    const season = sessionState.seasonYear;
+
+    // Determine family IDs to export.
+    // If an inspector is viewing a plot, export for that specific farmer.
+    // Otherwise, export all recorded families.
+    let familyIds = [];
+    if (targetFid) {
+      familyIds = [targetFid];
+    } else {
+      familyIds = Array.from(new Set([
+        ...Object.keys(farmersStore),
+        ...subplots.map((s) => s.parent_family_id).filter(Boolean)
+      ]));
+    }
+
+    if (familyIds.length === 0) {
+      showToast('⚠️ No inspection records or farmer selected to export.');
+      return;
+    }
+
     const rows = [];
     rows.push([
       'season_year', 'site', 'village', 'commune', 'family_id', 'farmer_name', 'gender', 'ethnicity',
@@ -3694,275 +3697,138 @@
       'has_chamkar', 'chamkar_num', 'chamkar_area_ha', 'chamkar_crops',
       'has_rice_barn', 'barn_chambers', 'barn_clean', 'barn_free_chemicals',
       'forest_cleared', 'boundary_expanded', 'burned_straw', 'firebreak_kept',
-      'final_recommendation', 'inspector_name', 'village_rep', 'has_signature', 'export_timestamp'
+      'final_recommendation', 'inspector_notes', 'inspector_name', 'village_rep', 'has_signature', 'export_timestamp'
     ].join(','));
 
-    const season = sessionState.seasonYear;
-
-    subplots.forEach((sp) => {
-      const fid = sp.parent_family_id;
+    familyIds.forEach((fid) => {
       const f = farmersStore[fid] || {};
-      const insp = icsInspections[sp.parent_plot_id] || {};
-      const h = sp.harvest || {};
       const ph = f.post_harvest || {};
       const conf = f.confirmation || {};
-      const plotMeta = allFeatures.find((ft) => ft.properties && ft.properties.id === sp.parent_plot_id);
-      const commune = plotMeta ? (plotMeta.properties.commune || '') : '';
 
-      const row = [
-        season,
-        csvQ(sp.parent_site), csvQ(sp.parent_village), csvQ(commune),
-        csvQ(fid), csvQ(f.hoh_name || ''), csvQ(f.hoh_sex || '1'), csvQ(f.ethnicity || '1'),
-        csvQ(f.is_head_interviewee || '1'), csvQ(f.interviewee_name || ''), csvQ(f.status || '1'),
-        csvQ(f.farmer_compliant || '1'), f.members_count || 4, f.school_count || 2,
-        csvQ(f.has_toilet || '1'), csvQ(f.has_disabled || '2'), f.cattle_count || 0, f.buffalo_count || 0,
-        csvQ(sp.parent_plot_num), sp.parent_area_ha || '', csvQ(insp.land_situation || '1'), csvQ(insp.irrigation || '1'),
-        csvQ(insp.contamination || '2'), csvQ(insp.avoid_method || ''),
-        csvQ(insp.last_prohibited || '2'), csvQ((insp.prohibited_inputs || []).join('; ')),
-        csvQ(insp.other_crop || '2'), csvQ(insp.crop_name || ''),
-        insp.exp_last_year || '', insp.actual_last_year || '', insp.sold_ircc || '',
-        csvQ(sp.id), csvQ(sp.code), csvQ(sp.variety), sp.pct_of_parent || '', sp.area_ha || '',
-        csvQ(sp.seed_source || 'Own saved'), sp.seed_kg || '', csvQ(sp.planting_date || ''), csvQ(sp.planting_method || 'Direct seeding'),
-        sp.fertilizer_applied ? 'Yes' : 'No', csvQ((sp.fertilizer_types || []).join('; ')), sp.fertilizer_qty || '',
-        sp.crop_protection_applied ? 'Yes' : 'No', csvQ(sp.protection_action || ''),
-        sp.expected_production_kg || '', sp.expected_sale_kg || '',
-        csvQ(h.complete || '1'), csvQ(h.date || ''), csvQ(h.method || '3'),
-        csvQ(h.owner || ''), h.flush_qty || 0, csvQ(h.dry_loc || '1'),
-        h.actual_kg || '', h.sale_kg || '', h.consume_kg || '', h.seed_kg || '',
-        csvQ(h.payment_type || '1'), h.payment_amount || '',
-        csvQ(ph.have_chamkar || '2'), ph.chamkar_num || '', ph.chamkar_area || '', csvQ((ph.chamkar_crops || []).join('; ')),
-        csvQ(ph.has_rice_barn || '1'), ph.barn_chambers || '', csvQ(ph.barn_clean || '1'), csvQ(ph.barn_free_chemicals || '1'),
-        csvQ(ph.cleared_forest || '2'), csvQ(ph.expanded_land || '2'), csvQ(ph.burned_straw || '2'), csvQ(ph.firebreak_kept || '1'),
-        csvQ(conf.certified_status || '1'), csvQ(conf.inspector_name || sessionState.inspectorName), csvQ(conf.irpg_name || ''),
-        conf.signature_data ? 'Yes' : 'No',
-        new Date().toISOString()
-      ];
-      rows.push(row.join(','));
+      // Retrieve all registered parcels for this family
+      let parcels = allFeatures
+        .filter((ft) => ft.properties && ft.properties.family_id === fid)
+        .map((ft) => ft.properties);
+
+      if (parcels.length === 0) {
+        if (selectedPlot && selectedPlot.family_id === fid) {
+          parcels = [selectedPlot];
+        } else {
+          const famSubplots = subplots.filter((s) => s.parent_family_id === fid);
+          const pMap = {};
+          famSubplots.forEach((s) => {
+            if (!pMap[s.parent_plot_id]) {
+              pMap[s.parent_plot_id] = {
+                id: s.parent_plot_id,
+                plot_id: s.parent_plot_num,
+                area_ha: s.parent_area_ha,
+                site: s.parent_site,
+                village: s.parent_village
+              };
+            }
+          });
+          parcels = Object.values(pMap);
+        }
+      }
+
+      if (parcels.length === 0) {
+        parcels = [{ id: 'N/A', plot_id: 'N/A', area_ha: 0, site: '', village: '' }];
+      }
+
+      parcels.forEach((parcel) => {
+        const pId = parcel.id || parcel.plot_id;
+        const pNum = parcel.plot_id;
+        const insp = icsInspections[pId] || {};
+        const pSite = parcel.site || '';
+        const pVillage = parcel.village || '';
+        const pCommune = parcel.commune || '';
+        const pArea = parcel.area_ha || insp.area_ha || '';
+
+        // Retrieve all subplots for this parcel
+        const pSubplots = subplots.filter(
+          (sp) => sp.parent_plot_id === pId || (pNum && String(sp.parent_plot_num) === String(pNum))
+        );
+
+        if (pSubplots.length > 0) {
+          // Output 1 row per subplot with its harvest record
+          pSubplots.forEach((sp) => {
+            const h = sp.harvest || {};
+            const row = [
+              season,
+              csvQ(pSite || sp.parent_site), csvQ(pVillage || sp.parent_village), csvQ(pCommune),
+              csvQ(fid), csvQ(f.hoh_name || ''), csvQ(f.hoh_sex || '1'), csvQ(f.ethnicity || '1'),
+              csvQ(f.is_head_interviewee || '1'), csvQ(f.interviewee_name || ''), csvQ(f.status || '1'),
+              csvQ(f.farmer_compliant || '1'), f.members_count || 4, f.school_count || 2,
+              csvQ(f.has_toilet || '1'), csvQ(f.has_disabled || '2'), f.cattle_count || 0, f.buffalo_count || 0,
+              csvQ(pNum), pArea, csvQ(insp.land_situation || '1'), csvQ(insp.irrigation || '1'),
+              csvQ(insp.contamination || '2'), csvQ(insp.avoid_method || ''),
+              csvQ(insp.last_prohibited || '2'), csvQ((insp.prohibited_inputs || []).join('; ')),
+              csvQ(insp.other_crop || '2'), csvQ(insp.crop_name || ''),
+              insp.exp_last_year || '', insp.actual_last_year || '', insp.sold_ircc || '',
+              csvQ(sp.id), csvQ(sp.code), csvQ(sp.variety), sp.pct_of_parent || '', sp.area_ha || '',
+              csvQ(sp.seed_source || 'Own saved'), sp.seed_kg || '', csvQ(sp.planting_date || ''), csvQ(sp.planting_method || 'Direct seeding'),
+              sp.fertilizer_applied ? 'Yes' : 'No', csvQ((sp.fertilizer_types || []).join('; ')), sp.fertilizer_qty || '',
+              sp.crop_protection_applied ? 'Yes' : 'No', csvQ(sp.protection_action || ''),
+              sp.expected_production_kg || '', sp.expected_sale_kg || '',
+              csvQ(h.complete || '1'), csvQ(h.date || ''), csvQ(h.method || '3'),
+              csvQ(h.owner || ''), h.flush_qty || 0, csvQ(h.dry_loc || '1'),
+              h.actual_kg || '', h.sale_kg || '', h.consume_kg || '', h.seed_kg || '',
+              csvQ(h.payment_type || '1'), h.payment_amount || '',
+              csvQ(ph.have_chamkar || '2'), ph.chamkar_num || '', ph.chamkar_area || '', csvQ((ph.chamkar_crops || []).join('; ')),
+              csvQ(ph.has_rice_barn || '1'), ph.barn_chambers || '', csvQ(ph.barn_clean || '1'), csvQ(ph.barn_free_chemicals || '1'),
+              csvQ(ph.cleared_forest || '2'), csvQ(ph.expanded_land || '2'), csvQ(ph.burned_straw || '2'), csvQ(ph.firebreak_kept || '1'),
+              csvQ(conf.certified_status || '1'), csvQ(conf.conclusion_notes || ''), csvQ(conf.inspector_name || sessionState.inspectorName), csvQ(conf.irpg_name || ''),
+              conf.signature_data ? 'Yes' : 'No',
+              new Date().toISOString()
+            ];
+            rows.push(row.join(','));
+          });
+        } else {
+          // Output 1 row for the parcel baseline (if no subplots drawn yet)
+          const row = [
+            season,
+            csvQ(pSite), csvQ(pVillage), csvQ(pCommune),
+            csvQ(fid), csvQ(f.hoh_name || ''), csvQ(f.hoh_sex || '1'), csvQ(f.ethnicity || '1'),
+            csvQ(f.is_head_interviewee || '1'), csvQ(f.interviewee_name || ''), csvQ(f.status || '1'),
+            csvQ(f.farmer_compliant || '1'), f.members_count || 4, f.school_count || 2,
+            csvQ(f.has_toilet || '1'), csvQ(f.has_disabled || '2'), f.cattle_count || 0, f.buffalo_count || 0,
+            csvQ(pNum), pArea, csvQ(insp.land_situation || '1'), csvQ(insp.irrigation || '1'),
+            csvQ(insp.contamination || '2'), csvQ(insp.avoid_method || ''),
+            csvQ(insp.last_prohibited || '2'), csvQ((insp.prohibited_inputs || []).join('; ')),
+            csvQ(insp.other_crop || '2'), csvQ(insp.crop_name || ''),
+            insp.exp_last_year || '', insp.actual_last_year || '', insp.sold_ircc || '',
+            '', 'Main Plot (Whole)', 'Whole Plot', '100', pArea,
+            '', '', '', '',
+            'No', '', '', 'No', '',
+            '', '',
+            '', '', '', '', 0, '', '', '', '', '',
+            '', '',
+            csvQ(ph.have_chamkar || '2'), ph.chamkar_num || '', ph.chamkar_area || '', csvQ((ph.chamkar_crops || []).join('; ')),
+            csvQ(ph.has_rice_barn || '1'), ph.barn_chambers || '', csvQ(ph.barn_clean || '1'), csvQ(ph.barn_free_chemicals || '1'),
+            csvQ(ph.cleared_forest || '2'), csvQ(ph.expanded_land || '2'), csvQ(ph.burned_straw || '2'), csvQ(ph.firebreak_kept || '1'),
+            csvQ(conf.certified_status || '1'), csvQ(conf.conclusion_notes || ''), csvQ(conf.inspector_name || sessionState.inspectorName), csvQ(conf.irpg_name || ''),
+            conf.signature_data ? 'Yes' : 'No',
+            new Date().toISOString()
+          ];
+          rows.push(row.join(','));
+        }
+      });
     });
 
     if (rows.length <= 1) {
-      showToast('⚠️ No subplots sketched yet to export.');
+      showToast('⚠️ No records found to export.');
       return;
     }
 
     const csv = rows.join('\r\n');
-    downloadBlob(csv, `ibis_ics_2026_report_${season}_${new Date().toISOString().slice(0, 10)}.csv`, 'text/csv');
-    showToast(`✅ Exported ${rows.length - 1} subplot inspection rows to CSV`);
+    const filename = targetFid
+      ? `ibis_inspection_family_${targetFid}_${season}_${new Date().toISOString().slice(0, 10)}.csv`
+      : `ibis_ics_2026_report_${season}_${new Date().toISOString().slice(0, 10)}.csv`;
+    downloadBlob(csv, filename, 'text/csv');
+    showToast(`✅ Exported inspection file for Family ${targetFid || 'All'} (${rows.length - 1} record(s))`);
   }
 
-  // --- Export SurveySolutions JSON Format ---
-  function exportICSJson() {
-    const season = sessionState.seasonYear;
-    const output = [];
 
-    // Group by family
-    const familyIds = Array.from(new Set(subplots.map((s) => s.parent_family_id)));
-    familyIds.forEach((fid) => {
-      const f = farmersStore[fid] || {};
-      const familySubplots = subplots.filter((s) => s.parent_family_id === fid);
-      const parentPlotIds = Array.from(new Set(familySubplots.map((s) => s.parent_plot_id)));
-
-      const parcels = parentPlotIds.map((pId) => {
-        const insp = icsInspections[pId] || {};
-        const pSubplots = familySubplots.filter((s) => s.parent_plot_id === pId);
-
-        return {
-          plot_id: pSubplots[0] ? pSubplots[0].parent_plot_num : '',
-          plot_db_id: pId,
-          inspection_date: insp.inspection_date || '',
-          area_ha: insp.area_ha || (pSubplots[0] ? pSubplots[0].parent_area_ha : 0),
-          land_situation: insp.land_situation || '1',
-          irrigation: insp.irrigation || '1',
-          contamination_risk: insp.contamination || '2',
-          mitigation: insp.avoid_method || '',
-          prohibited_used_3yr: insp.last_prohibited || '2',
-          prohibited_inputs: insp.prohibited_inputs || [],
-          other_crops: insp.other_crop || '2',
-          crop_name: insp.crop_name || '',
-          mass_balance_last_season: {
-            exp_kg: insp.exp_last_year || 0,
-            actual_kg: insp.actual_last_year || 0,
-            sold_ircc_kg: insp.sold_ircc || 0,
-            seed_kept_kg: insp.seed_kept || 0,
-            consumed_kg: insp.consumed || 0
-          },
-          subplots: pSubplots.map((sp) => ({
-            subplot_id: sp.id,
-            subplot_name: sp.code,
-            variety: sp.variety,
-            percentage_of_plot: sp.pct_of_parent,
-            area_ha: sp.area_ha,
-            coordinates: sp.coordinates,
-            seed_source: sp.seed_source || 'Own saved',
-            seed_kg: sp.seed_kg || 0,
-            planting_date: sp.planting_date || '',
-            planting_method: sp.planting_method || 'Direct seeding',
-            fertilizer_applied: !!sp.fertilizer_applied,
-            fertilizer_types: sp.fertilizer_types || [],
-            fertilizer_qty_kg: sp.fertilizer_qty || 0,
-            protection_applied: !!sp.crop_protection_applied,
-            protection_method: sp.protection_action || '',
-            protection_qty: sp.protection_qty || 0,
-            expected_production_kg: sp.expected_production_kg || 0,
-            expected_sale_kg: sp.expected_sale_kg || 0,
-            notes: sp.notes || ''
-          })),
-          threshing_record: {
-            complete: insp.harvest_complete || '1',
-            reason_incomplete: insp.harvest_reason_no || '',
-            threshing_date: insp.harvest_date || '',
-            method: insp.harvest_method || '3',
-            machine_contractor: insp.machine_owner || '',
-            organic_flush_kg: insp.flush_qty || 0,
-            drying_location: insp.dry_loc || '1',
-            separate_subplots: insp.diff_plots || '1',
-            actual_harvest_kg: insp.actual_kg || 0,
-            for_sale_kg: insp.sale_kg || 0,
-            household_kg: insp.consume_kg || 0,
-            seed_kept_kg: insp.seed_kg || 0,
-            payment_type: insp.payment_type || '1',
-            payment_amount: insp.payment_amount || 0
-          },
-          post_harvest_and_chamkar: {
-            has_chamkar: insp.have_chamkar || '2',
-            chamkar_num: insp.chamkar_num || 0,
-            chamkar_area_ha: insp.chamkar_area || 0,
-            chamkar_crops: insp.chamkar_crops || [],
-            has_rice_barn: insp.has_rice_barn || '1',
-            barn_chambers: insp.barn_chambers || 1,
-            barn_clean: insp.barn_clean || '1',
-            barn_free_chemicals: insp.barn_free_chemicals || '1'
-          },
-          environmental_standards: {
-            forest_cleared: insp.cleared_forest || '2',
-            boundary_expanded: insp.expanded_land || '2',
-            burned_straw: insp.burned_straw || '2',
-            firebreak_kept: insp.firebreak_kept || '1'
-          },
-          confirmation: {
-            certified_recommendation: insp.certified_status || '1',
-            conclusion_notes: insp.conclusion_notes || '',
-            inspector_name: insp.inspector_name || sessionState.inspectorName,
-            village_rep: insp.irpg_name || '',
-            has_signature: !!insp.signature_data,
-            completed_at: insp.completed_at || ''
-          }
-        };
-      });
-
-      output.push({
-        family_id: fid,
-        season_year: season,
-        farmer_profile: {
-          head_name: f.hoh_name || '',
-          head_gender: f.hoh_sex || '1',
-          is_head_interviewee: f.is_head_interviewee || '1',
-          ethnicity: f.ethnicity || '1',
-          interviewee_name: f.interviewee_name || '',
-          interviewee_gender: f.interviewee_gender || '1',
-          status: f.status || '1',
-          labor_mf: f.labor_mf || '3',
-          members_count: f.members_count || 4,
-          females_count: f.females_count || 2,
-          school_count: f.school_count || 2,
-          has_toilet: f.has_toilet || '1',
-          has_disabled: f.has_disabled || '2',
-          cattle_count: f.cattle_count || 0,
-          buffalo_count: f.buffalo_count || 0,
-          other_animals_count: f.other_animals_count || 0,
-          trainings_attended: f.trainings || [],
-          records_kept: f.records || []
-        },
-        parcels: parcels
-      });
-    });
-
-    if (output.length === 0) {
-      showToast('⚠️ No inspection records to export.');
-      return;
-    }
-
-    const jsonStr = JSON.stringify(output, null, 2);
-    downloadBlob(jsonStr, `survey_solutions_ics_2026_${season}_${new Date().toISOString().slice(0, 10)}.json`, 'application/json');
-    showToast(`✅ Exported ${output.length} SurveySolutions household record(s)`);
-  }
-
-  // --- Export Full GeoJSON ---
-  function exportFullGeoJSON() {
-    const season = sessionState.seasonYear;
-    const features = subplots.map((sp) => {
-      const fid = sp.parent_family_id;
-      const f = farmersStore[fid] || {};
-      const insp = icsInspections[sp.parent_plot_id] || {};
-      const isPoly = sp.coordinates && sp.coordinates.length >= 3;
-      const geom = isPoly
-        ? { type: 'Polygon', coordinates: [sp.coordinates.map((pt) => [roundTo(pt[1], 6), roundTo(pt[0], 6)])] }
-        : { type: 'Point', coordinates: [roundTo(sp.lng, 6), roundTo(sp.lat, 6)] };
-
-      return {
-        type: 'Feature',
-        id: sp.id,
-        properties: {
-          // Subplot
-          subplot_id: sp.id,
-          subplot_name: sp.code,
-          variety: sp.variety,
-          pct_of_parent: sp.pct_of_parent,
-          area_ha: sp.area_ha,
-          seed_source: sp.seed_source || 'Own saved',
-          seed_kg: sp.seed_kg || 0,
-          planting_date: sp.planting_date || '',
-          planting_method: sp.planting_method || 'Direct seeding',
-          fertilizer_applied: !!sp.fertilizer_applied,
-          fertilizer_types: sp.fertilizer_types || [],
-          fertilizer_qty_kg: sp.fertilizer_qty || 0,
-          protection_applied: !!sp.crop_protection_applied,
-          protection_action: sp.protection_action || '',
-          expected_production_kg: sp.expected_production_kg || 0,
-          expected_sale_kg: sp.expected_sale_kg || 0,
-          notes: sp.notes || '',
-          // Parent Plot & Farmer
-          family_id: fid,
-          plot_id: sp.parent_plot_num,
-          plot_db_id: sp.parent_plot_id,
-          site: sp.parent_site,
-          village: sp.parent_village,
-          farmer_name: f.hoh_name || '',
-          farmer_status: f.status || '1',
-          compliance_status: insp.farmer_compliant || '1',
-          land_situation: insp.land_situation || '1',
-          irrigation: insp.irrigation || '1',
-          contamination_risk: insp.contamination || '2',
-          // Harvest
-          thresh_complete: insp.harvest_complete || '1',
-          actual_harvest_kg: insp.actual_kg || 0,
-          for_sale_kg: insp.sale_kg || 0,
-          household_kg: insp.consume_kg || 0,
-          seed_kept_kg: insp.seed_kg || 0,
-          // Outcome
-          certified_recommendation: insp.certified_status || '1',
-          inspector_name: insp.inspector_name || sessionState.inspectorName,
-          village_rep: insp.irpg_name || '',
-          has_signature: !!insp.signature_data,
-          season_year: season,
-          export_date: new Date().toISOString()
-        },
-        geometry: geom
-      };
-    });
-
-    if (!features.length) {
-      showToast('⚠️ No subplot features to export.');
-      return;
-    }
-
-    downloadBlob(
-      JSON.stringify({ type: 'FeatureCollection', features }, null, 2),
-      `ibis_full_ics_2026_${season}_${new Date().toISOString().slice(0, 10)}.geojson`,
-      'application/geo+json'
-    );
-    showToast(`✅ Exported ${features.length} GeoJSON features`);
-  }
 
   function csvQ(val) {
     if (val === null || val === undefined || val === '') return '';

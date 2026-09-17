@@ -9,10 +9,14 @@ router = APIRouter(prefix="/parcels", tags=["Parcels & Subplots"])
 
 @router.get("/farmer/{farmer_id}", response_model=List[ParcelOut])
 def get_parcels_by_farmer(farmer_id: str, season_code: str = "2026", db: Session = Depends(get_db)):
-    """Returns all registered physical parcels for a farmer, with active season subplots."""
-    parcels = db.query(Parcel).filter(Parcel.farmer_id == farmer_id).all()
+    """Returns all registered physical parcels for a farmer for the given season, with subplots."""
     season = db.query(Season).filter(Season.code == season_code).first()
     season_id = season.id if season else None
+    
+    query = db.query(Parcel).filter(Parcel.farmer_id == farmer_id)
+    if season_id:
+        query = query.filter(Parcel.season_id == season_id)
+    parcels = query.all()
     
     results = []
     for p in parcels:
@@ -63,12 +67,15 @@ def get_parcels_by_farmer(farmer_id: str, season_code: str = "2026", db: Session
                 
         results.append(ParcelOut(
             id=p.id,
+            season_id=p.season_id,
+            season_code=season_code,
             farmer_id=p.farmer_id,
             parcel_code=p.parcel_code,
             lat=p.lat,
             lng=p.lng,
             gis_area_ha=p.gis_area_ha,
             geom_geojson=p.geom_geojson,
+            inspection_status=p.inspection_status or "pending",
             land_tenure=p.land_tenure or "titled",
             irrigation_type=p.irrigation_type or "rainfed",
             contamination_risk=p.contamination_risk or False,
@@ -84,14 +91,18 @@ def get_parcel(parcel_id: str, db: Session = Depends(get_db)):
     if not parcel:
         raise HTTPException(status_code=404, detail="Parcel not found")
         
+    season_code = parcel.season.code if parcel.season else "2026"
     return ParcelOut(
         id=parcel.id,
+        season_id=parcel.season_id,
+        season_code=season_code,
         farmer_id=parcel.farmer_id,
         parcel_code=parcel.parcel_code,
         lat=parcel.lat,
         lng=parcel.lng,
         gis_area_ha=parcel.gis_area_ha,
         geom_geojson=parcel.geom_geojson,
+        inspection_status=parcel.inspection_status or "pending",
         land_tenure=parcel.land_tenure or "titled",
         irrigation_type=parcel.irrigation_type or "rainfed",
         contamination_risk=parcel.contamination_risk or False,
@@ -99,3 +110,18 @@ def get_parcel(parcel_id: str, db: Session = Depends(get_db)):
         prohibited_chemicals_3yr=parcel.prohibited_chemicals_3yr or False,
         subplots=[]
     )
+
+@router.put("/{parcel_id}/status")
+def update_parcel_status(parcel_id: str, status: str, db: Session = Depends(get_db)):
+    """Updates the inspection status of a parcel for visual map styling ('pending', 'in_progress', 'completed', 'non_compliant')."""
+    parcel = db.query(Parcel).filter(Parcel.id == parcel_id).first()
+    if not parcel:
+        raise HTTPException(status_code=404, detail="Parcel not found")
+        
+    valid_statuses = ["pending", "in_progress", "completed", "non_compliant"]
+    if status not in valid_statuses:
+        raise HTTPException(status_code=400, detail=f"Invalid status. Must be one of: {valid_statuses}")
+        
+    parcel.inspection_status = status
+    db.commit()
+    return {"success": True, "parcel_id": parcel_id, "status": status}

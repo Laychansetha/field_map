@@ -3067,5 +3067,123 @@ html, body {
   margin-bottom: 12px;
 }
 
+/* ==========================================================
+   ANNUAL INSPECTION STATUS & MAP LEGEND
+   ========================================================== */
+.season-selector-wrapper {
+  margin-left: 10px;
+  display: flex;
+  align-items: center;
+}
+
+.season-select {
+  background: rgba(16, 185, 129, 0.15);
+  border: 1px solid rgba(16, 185, 129, 0.35);
+  color: #34d399;
+  font-weight: 600;
+  font-size: 0.76rem;
+  padding: 4px 8px;
+  border-radius: 6px;
+  outline: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.season-select:hover, .season-select:focus {
+  background: rgba(16, 185, 129, 0.25);
+  border-color: #34d399;
+}
+
+.map-status-legend {
+  position: absolute;
+  bottom: 24px;
+  right: 14px;
+  z-index: 1000;
+  background: rgba(15, 23, 42, 0.88);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 10px;
+  padding: 8px 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  font-size: 0.74rem;
+  color: #e2e8f0;
+  pointer-events: auto;
+  user-select: none;
+  transition: all 0.2s ease;
+  min-width: 145px;
+}
+
+.map-status-legend:hover {
+  background: rgba(15, 23, 42, 0.95);
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+.legend-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  margin-bottom: 6px;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #94a3b8;
+}
+
+.legend-season-badge {
+  background: #059669;
+  color: #ffffff;
+  padding: 1px 6px;
+  border-radius: 4px;
+  font-weight: 700;
+  font-size: 0.68rem;
+}
+
+.legend-items {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.legend-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.dot-completed {
+  background: #10b981;
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.6);
+}
+
+.dot-in-progress {
+  background: #f59e0b;
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.6);
+}
+
+.dot-pending {
+  background: #3b82f6;
+  opacity: 0.8;
+}
+
+.dot-non-compliant {
+  background: #ef4444;
+  box-shadow: 0 0 6px rgba(239, 68, 68, 0.6);
+}
+
+.legend-count {
+  margin-left: auto;
+  font-weight: 700;
+  font-size: 0.72rem;
+  color: #cbd5e1;
+}
+
 
 

@@ -33,9 +33,18 @@
           </div>
           <div class="brand-text">
             <h1>Ibis Rice Navigator</h1>
-            <span class="badge offline-badge" id="offline-badge">
-              <span class="status-dot"></span> Offline Ready
-            </span>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span class="badge offline-badge" id="offline-badge">
+                <span class="status-dot"></span> Offline Ready
+              </span>
+              <div class="season-selector-wrapper">
+                <select id="season-selector" class="season-select" title="Active Inspection Season">
+                  <option value="2026" selected>Season 2026</option>
+                  <option value="2027">Season 2027</option>
+                  <option value="2025">Season 2025 (Archive)</option>
+                </select>
+              </div>
+            </div>
           </div>
         </div>
         
@@ -147,6 +156,30 @@
             <path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"></path>
           </svg>
         </button>
+      </div>
+
+      <!-- Map Inspection Status Legend (Current Season) -->
+      <div id="map-status-legend" class="map-status-legend" aria-label="Inspection Progress">
+        <div class="legend-header">
+          <span class="legend-season-badge" id="legend-season-badge">2026</span> Inspection
+        </div>
+        <div class="legend-items">
+          <div class="legend-item" title="Inspection completed & signed off">
+            <span class="legend-dot dot-completed"></span>
+            <span>Completed</span>
+            <span class="legend-count" id="count-completed">0</span>
+          </div>
+          <div class="legend-item" title="Draft saved or subplots sketched">
+            <span class="legend-dot dot-in-progress"></span>
+            <span>In Progress</span>
+            <span class="legend-count" id="count-inprogress">0</span>
+          </div>
+          <div class="legend-item" title="Awaiting field inspection">
+            <span class="legend-dot dot-pending"></span>
+            <span>Pending</span>
+            <span class="legend-count" id="count-pending">6,427</span>
+          </div>
+        </div>
       </div>
 
       <!-- Subplot Drawing & Separation HUD Toolbar (fullscreen, bottom-anchored) -->

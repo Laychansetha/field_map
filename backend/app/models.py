@@ -30,6 +30,7 @@ class Season(Base):
     
     subplots = relationship("Subplot", back_populates="season")
     inspections = relationship("Inspection", back_populates="season")
+    parcels = relationship("Parcel", back_populates="season", cascade="all, delete-orphan")
 
 class Landscape(Base):
     __tablename__ = "landscapes"
@@ -145,12 +146,14 @@ class Parcel(Base):
     __tablename__ = "parcels"
     
     id = Column(String(36), primary_key=True, default=gen_uuid)
+    season_id = Column(Integer, ForeignKey("seasons.id"), nullable=False, index=True, default=1)
     farmer_id = Column(String(36), ForeignKey("farmers.id"), nullable=False, index=True)
     parcel_code = Column(String(64), nullable=True, index=True) # e.g. 'Plot 90'
     lat = Column(Float, nullable=False)
     lng = Column(Float, nullable=False)
     gis_area_ha = Column(Float, nullable=False, default=0.0)
     geom_geojson = Column(Text, nullable=False) # Stored GeoJSON polygon (portable between SQLite & PostGIS)
+    inspection_status = Column(String(32), default="pending", index=True) # 'pending', 'in_progress', 'completed', 'non_compliant'
     
     # Agronomic baseline
     land_tenure = Column(String(64), default="titled")
@@ -162,6 +165,11 @@ class Parcel(Base):
     created_at = Column(DateTime, default=utc_now)
     updated_at = Column(DateTime, default=utc_now, onupdate=utc_now)
     
+    __table_args__ = (
+        UniqueConstraint("season_id", "farmer_id", "parcel_code", name="uq_season_farmer_parcel"),
+    )
+    
+    season = relationship("Season", back_populates="parcels")
     farmer = relationship("Farmer", back_populates="parcels")
     plots = relationship("Plot", back_populates="parcel", cascade="all, delete-orphan")
     subplots = relationship("Subplot", back_populates="parcel", cascade="all, delete-orphan")

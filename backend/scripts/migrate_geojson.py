@@ -14,8 +14,10 @@ from backend.app.models import (
     Farmer, HouseholdProfile, Parcel, Plot, QuestionDefinition
 )
 
-def run_migration():
-    print("=== STARTING DATA MIGRATION TO DATABASE ===")
+import argparse
+
+def run_migration(geojson_file=None, season_code="2026"):
+    print(f"=== STARTING ANNUAL GIS INGESTION FOR SEASON {season_code} ===")
     
     # Ensure tables are created
     Base.metadata.create_all(bind=engine)
@@ -23,8 +25,9 @@ def run_migration():
     
     try:
         # 1. Seed Seasons
-        print("-> Seeding Seasons...")
+        print("-> Ensuring Seasons exist...")
         seasons_data = [
+            {"code": "2025", "name": "ICS Season 2025", "is_active": False, "start_date": date(2025, 1, 1), "end_date": date(2025, 12, 31)},
             {"code": "2026", "name": "ICS Season 2026", "is_active": True, "start_date": date(2026, 1, 1), "end_date": date(2026, 12, 31)},
             {"code": "2027", "name": "ICS Season 2027", "is_active": False, "start_date": date(2027, 1, 1), "end_date": date(2027, 12, 31)},
         ]
@@ -32,6 +35,13 @@ def run_migration():
             if not db.query(Season).filter(Season.code == s["code"]).first():
                 db.add(Season(**s))
         db.commit()
+        
+        target_season = db.query(Season).filter(Season.code == season_code).first()
+        if not target_season:
+            target_season = Season(code=season_code, name=f"ICS Season {season_code}", is_active=True)
+            db.add(target_season)
+            db.commit()
+            db.refresh(target_season)
         
         # 2. Seed Rice Varieties
         print("-> Seeding Rice Varieties...")
@@ -163,34 +173,49 @@ def run_migration():
                 farmers_map[farmer_key] = fm.id
             farmer_db_id = farmers_map[farmer_key]
             
-            # Add Parcel
-            parcel = Parcel(
-                farmer_id=farmer_db_id,
-                parcel_code=f"Plot {plot_id}",
-                lat=lat,
-                lng=lng,
-                gis_area_ha=round(area_ha, 4),
-                geom_geojson=json.dumps(geom),
-                land_tenure="titled",
-                irrigation_type="rainfed"
-            )
-            db.add(parcel)
-            db.flush()
+            # Add or update Parcel for target season
+            existing_parcel = db.query(Parcel).filter(
+                Parcel.season_id == target_season.id,
+                Parcel.farmer_id == farmer_db_id,
+                Parcel.parcel_code == f"Plot {plot_id}"
+            ).first()
             
-            # Add Plot record
-            db.add(Plot(
-                parcel_id=parcel.id,
-                plot_number=int(plot_id) if str(plot_id).isdigit() else idx + 1,
-                name=f"Plot {plot_id}"
-            ))
+            if not existing_parcel:
+                parcel = Parcel(
+                    season_id=target_season.id,
+                    farmer_id=farmer_db_id,
+                    parcel_code=f"Plot {plot_id}",
+                    lat=lat,
+                    lng=lng,
+                    gis_area_ha=round(area_ha, 4),
+                    geom_geojson=json.dumps(geom),
+                    inspection_status="pending",
+                    land_tenure="titled",
+                    irrigation_type="rainfed"
+                )
+                db.add(parcel)
+                db.flush()
+                
+                # Add Plot record
+                db.add(Plot(
+                    parcel_id=parcel.id,
+                    plot_number=int(plot_id) if str(plot_id).isdigit() else idx + 1,
+                    name=f"Plot {plot_id}"
+                ))
+            else:
+                # Update geometry if GIS remapped
+                existing_parcel.geom_geojson = json.dumps(geom)
+                existing_parcel.gis_area_ha = round(area_ha, 4)
+                existing_parcel.lat = lat
+                existing_parcel.lng = lng
             
             imported_parcels += 1
             if imported_parcels % batch_size == 0:
                 db.commit()
-                print(f"  Processed {imported_parcels} / {len(features)} parcels...")
+                print(f"  Processed {imported_parcels} / {len(features)} parcels for Season {season_code}...")
                 
         db.commit()
-        print(f"=== MIGRATION COMPLETE! Imported {imported_parcels} parcels, {len(farmers_map)} unique farmers across {len(villages_map)} villages. ===")
+        print(f"=== INGESTION COMPLETE! Processed {imported_parcels} parcels for Season {season_code}. ===")
         
     except Exception as e:
         db.rollback()
@@ -200,4 +225,9 @@ def run_migration():
         db.close()
 
 if __name__ == "__main__":
-    run_migration()
+    parser = argparse.ArgumentParser(description="Annual GIS GeoJSON Ingestion for Ibis Rice Platform")
+    parser.add_argument("--file", default=None, help="Path to annual all_ibis_rice_plots.geojson")
+    parser.add_argument("--season", default="2026", help="Season code (e.g. 2026, 2027)")
+    args = parser.parse_args()
+    
+    run_migration(geojson_file=args.file, season_code=args.season)

@@ -111,12 +111,15 @@ class SubplotSchema(BaseModel):
 
 class ParcelOut(BaseModel):
     id: str
+    season_id: int = 1
+    season_code: Optional[str] = "2026"
     farmer_id: str
     parcel_code: Optional[str] = None
     lat: float
     lng: float
     gis_area_ha: float
     geom_geojson: str
+    inspection_status: str = "pending" # 'pending', 'in_progress', 'completed', 'non_compliant'
     land_tenure: str
     irrigation_type: str
     contamination_risk: bool

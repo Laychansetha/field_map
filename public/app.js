@@ -363,6 +363,114 @@
     }
   }
 
+  // --- Annual Inspection & Map Status Color Coding ---
+  let currentSeason = '2026';
+
+  function getPlotInspectionStatus(p, season = currentSeason) {
+    if (!p) return 'pending';
+    const farmerKey = getFarmerKey(p);
+    const farmerRecord = farmersStore[farmerKey];
+
+    // 1. Check if complete inspection confirmed for this farmer in current season
+    if (farmerRecord && farmerRecord.confirmation && farmerRecord.confirmation.is_completed) {
+      const compliance = farmerRecord.profile ? farmerRecord.profile.compliance_status : null;
+      if (compliance === '2' || compliance === '4') {
+        return 'non_compliant';
+      }
+      return 'completed';
+    }
+
+    // 2. Check if subplots have been drawn or baseline started for this plot
+    const hasSubplots = subplots && subplots.some(s => s.parent_plot_id === p.id);
+    const hasBaseline = farmerRecord && farmerRecord.plots && farmerRecord.plots[p.id];
+    if (hasSubplots || hasBaseline || (farmerRecord && farmerRecord.profile)) {
+      return 'in_progress';
+    }
+
+    return 'pending';
+  }
+
+  function getPlotStyle(p) {
+    const status = getPlotInspectionStatus(p);
+    switch (status) {
+      case 'completed':
+        return {
+          color: '#059669',       // Emerald 600
+          weight: 2,
+          fillColor: '#10b981',   // Emerald 500
+          fillOpacity: 0.65,
+          smoothFactor: 1.2
+        };
+      case 'in_progress':
+        return {
+          color: '#d97706',       // Amber 600
+          weight: 2,
+          fillColor: '#f59e0b',   // Amber 500
+          fillOpacity: 0.55,
+          smoothFactor: 1.2
+        };
+      case 'non_compliant':
+        return {
+          color: '#b91c1c',       // Red 700
+          weight: 2,
+          fillColor: '#ef4444',   // Red 500
+          fillOpacity: 0.65,
+          smoothFactor: 1.2
+        };
+      case 'pending':
+      default:
+        return {
+          color: '#2563eb',       // Blue 600
+          weight: 1.5,
+          fillColor: '#3b82f6',   // Blue 500
+          fillOpacity: 0.25,
+          smoothFactor: 1.5
+        };
+    }
+  }
+
+  function updatePlotVisualStatus(plotId) {
+    const layer = plotLayersById.get(plotId);
+    if (layer && layer.feature && layer.feature.properties) {
+      layer.setStyle(getPlotStyle(layer.feature.properties));
+    }
+    updateInspectionProgressCounts();
+  }
+
+  function refreshAllPlotStyles() {
+    plotLayersById.forEach((layer) => {
+      if (layer && layer.feature && layer.feature.properties) {
+        layer.setStyle(getPlotStyle(layer.feature.properties));
+      }
+    });
+    updateInspectionProgressCounts();
+  }
+
+  function updateInspectionProgressCounts() {
+    let completed = 0;
+    let inProgress = 0;
+    let pending = 0;
+
+    if (searchIndex && searchIndex.length > 0) {
+      for (let i = 0; i < searchIndex.length; i++) {
+        const status = getPlotInspectionStatus(searchIndex[i]);
+        if (status === 'completed') completed++;
+        else if (status === 'in_progress') inProgress++;
+        else pending++;
+      }
+    }
+
+    const elComp = document.getElementById('count-completed');
+    const elProg = document.getElementById('count-inprogress');
+    const elPend = document.getElementById('count-pending');
+    const elSeasonBadge = document.getElementById('legend-season-badge');
+
+    if (elComp) elComp.textContent = completed.toLocaleString();
+    if (elProg) elProg.textContent = inProgress.toLocaleString();
+    if (elPend) elPend.textContent = pending.toLocaleString();
+    if (elSeasonBadge) elSeasonBadge.textContent = currentSeason;
+  }
+
   // --- Render Plots on Map ---
   function renderGeoJsonLayer(geojson) {
     if (geojsonLayer) {
@@ -378,13 +486,7 @@
 
     try {
       geojsonLayer = L.geoJSON(geojson, {
-        style: () => ({
-          color: '#E4A834',
-          weight: 1.5,
-          fillColor: '#22c55e',
-          fillOpacity: 0.35,
-          smoothFactor: 1.5
-        }),
+        style: (feature) => getPlotStyle(feature ? feature.properties : null),
         onEachFeature: (feature, layer) => {
           const p = feature.properties;
           if (p && p.id !== undefined) {
@@ -407,17 +509,24 @@
             }
           });
 
-          // Tooltip on hover
+          // Tooltip on hover with dynamic inspection status badge
           if (p) {
+            const status = getPlotInspectionStatus(p);
+            let statusBadge = '<span style="color: #60a5fa;">🔵 Pending Inspection</span>';
+            if (status === 'completed') statusBadge = '<span style="color: #34d399; font-weight: bold;">🟢 Completed (Inspected)</span>';
+            else if (status === 'in_progress') statusBadge = '<span style="color: #fbbf24; font-weight: bold;">🟡 In Progress</span>';
+            else if (status === 'non_compliant') statusBadge = '<span style="color: #f87171; font-weight: bold;">🔴 Non-Compliant</span>';
+
             layer.bindTooltip(
-              `<b>${p.family_id}</b> · Plot ${p.plot_id}<br><small>${p.village}</small>`,
+              `<b>${p.family_id}</b> · Plot ${p.plot_id}<br><small>${p.village}</small><br>${statusBadge}`,
               { className: 'plot-label-tooltip', direction: 'top', sticky: true }
             );
           }
         }
       }).addTo(map);
 
-      console.log(`[Render] Rendered ${geojson.features.length} plots on map`);
+      updateInspectionProgressCounts();
+      console.log(`[Render] Rendered ${geojson.features.length} plots on map for Season ${currentSeason}`);
     } catch (err) {
       console.error('[Render] GeoJSON layer error:', err);
       showToast('Error rendering plots on map');
@@ -2046,6 +2155,18 @@
         }
       });
     }
+
+    // Active Inspection Season Selector
+    const seasonSelector = document.getElementById('season-selector');
+    if (seasonSelector) {
+      seasonSelector.addEventListener('change', (e) => {
+        currentSeason = e.target.value;
+        const badge = document.getElementById('legend-season-badge');
+        if (badge) badge.textContent = currentSeason;
+        showToast(`Switched active inspection season to ${currentSeason}`);
+        refreshAllPlotStyles();
+      });
+    }
   }
 
   // --- Quick Search Autocomplete (5 Dimensions: Site, Village, Family ID, Farmer, Plot Code) ---
@@ -3557,6 +3678,10 @@
       completed_at: new Date().toISOString()
     };
     saveICSStores();
+    if (selectedPlot) {
+      updatePlotVisualStatus(selectedPlot.id);
+    }
+    refreshAllPlotStyles();
   }
 
   function saveCompleteRecord() {
@@ -3571,6 +3696,7 @@
     saveCurrentConfirmationForm();
 
     renderSubplotsListForSelectedPlot();
+    refreshAllPlotStyles();
     showToast(`✅ Saved complete inspection for ${selectedPlot.village || 'Village'} · Family ${selectedPlot.family_id} (Plot ${selectedPlot.plot_id})`);
   }
 

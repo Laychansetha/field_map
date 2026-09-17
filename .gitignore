@@ -27,3 +27,9 @@ desktop.ini
 # Logs & scratch text files
 *.log
 *.txt
+
+# Local database binaries
+*.db
+*.sqlite
+*.sqlite3
+backend/data/

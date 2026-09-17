@@ -1825,3 +1825,847 @@ html, body {
 .leaflet-tooltip.plot-label-tooltip::before {
   display: none;
 }
+
+/* ==========================================================
+   DRAWER TAB BAR  (Subplots | Plot Info | Farmer)
+   ========================================================== */
+.drawer-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border-color);
+  background: rgba(0,0,0,0.2);
+  margin-bottom: 12px;
+  flex-shrink: 0;
+}
+
+.drawer-tab-btn {
+  flex: 1;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  font-weight: 600;
+  padding: 9px 4px 7px;
+  cursor: pointer;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  transition: color 0.18s, border-color 0.18s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+
+.drawer-tab-btn.active {
+  color: #00f0ff;
+  border-bottom-color: #00f0ff;
+}
+
+.drawer-tab-btn svg {
+  flex-shrink: 0;
+}
+
+.drawer-tab-panel {
+  display: none;
+}
+
+.drawer-tab-panel.active {
+  display: block;
+}
+
+/* ==========================================================
+   INSPECTION STATUS BADGES ON SUBPLOT CARDS
+   ========================================================== */
+.insp-badge {
+  font-size: 0.66rem;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: var(--radius-full);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.insp-badge-done {
+  background: rgba(16,185,129,0.18);
+  color: #6ee7b7;
+  border: 1px solid rgba(16,185,129,0.38);
+}
+
+.insp-badge-harvest {
+  background: rgba(234,179,8,0.18);
+  color: #fde68a;
+  border: 1px solid rgba(234,179,8,0.38);
+}
+
+/* ==========================================================
+   INSPECT + HARVEST ACTION BUTTONS ON SUBPLOT CARDS
+   ========================================================== */
+.sp-inspect-btn {
+  background: rgba(0,240,255,0.12);
+  border: 1px solid rgba(0,240,255,0.3);
+  color: #00f0ff;
+  border-radius: var(--radius-sm);
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 4px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+
+.sp-inspect-btn:hover {
+  background: rgba(0,240,255,0.24);
+}
+
+.sp-harvest-btn {
+  background: rgba(234,179,8,0.14);
+  border: 1px solid rgba(234,179,8,0.38);
+  color: #fde68a;
+  border-radius: var(--radius-sm);
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 4px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s;
+}
+
+.sp-harvest-btn:hover {
+  background: rgba(234,179,8,0.26);
+}
+
+/* ==========================================================
+   FARMER / PLOT INFO SUMMARY PANEL (in drawer tab)
+   ========================================================== */
+.info-panel-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.info-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.info-panel-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--brand-gold);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.info-panel-edit-btn {
+  background: transparent;
+  border: 1px solid rgba(0,240,255,0.3);
+  border-radius: var(--radius-sm);
+  color: #00f0ff;
+  font-size: 0.72rem;
+  font-weight: 600;
+  padding: 3px 10px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.info-panel-edit-btn:hover {
+  background: rgba(0,240,255,0.15);
+}
+
+.info-kv-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 12px;
+}
+
+.info-kv {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.info-kv-label {
+  font-size: 0.66rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.info-kv-value {
+  font-size: 0.86rem;
+  font-weight: 600;
+  color: #fff;
+}
+
+.info-kv-value.muted {
+  color: var(--text-muted);
+  font-style: italic;
+  font-weight: 400;
+}
+
+.info-panel-empty {
+  text-align: center;
+  padding: 20px;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+
+.info-panel-empty strong {
+  color: var(--text-secondary);
+  display: block;
+  margin-bottom: 6px;
+}
+
+/* ==========================================================
+   SESSION SETTINGS BAR (Inspector + Season)
+   ========================================================== */
+.session-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  background: rgba(0,0,0,0.3);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: var(--radius-sm);
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+
+.session-bar-label {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+.session-bar input,
+.session-bar select {
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: #fff;
+  padding: 4px 8px;
+  font-size: 0.82rem;
+  font-family: inherit;
+  outline: none;
+  min-width: 0;
+  flex: 1;
+}
+
+.session-bar input:focus,
+.session-bar select:focus {
+  border-color: #00f0ff;
+}
+
+/* ==========================================================
+   EXTENDED FORM LAYOUTS FOR MULTI-COLUMN ROWS
+   ========================================================== */
+.form-row-three {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px;
+}
+
+.form-row-two {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.form-section-divider {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.form-section-divider::before,
+.form-section-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: rgba(255,255,255,0.1);
+}
+
+/* Inputs list chips */
+.inputs-list-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.input-entry-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.input-entry-row select,
+.input-entry-row input {
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: #fff;
+  padding: 7px 10px;
+  font-size: 0.84rem;
+  font-family: inherit;
+  outline: none;
+  flex: 1;
+  min-width: 0;
+}
+
+.input-entry-row input:focus,
+.input-entry-row select:focus {
+  border-color: #00f0ff;
+}
+
+.remove-input-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.remove-input-btn:hover {
+  color: #ef4444;
+}
+
+.add-input-row-btn {
+  background: rgba(255,255,255,0.06);
+  border: 1px dashed rgba(255,255,255,0.2);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  font-weight: 600;
+  padding: 8px;
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.15s;
+}
+
+.add-input-row-btn:hover {
+  background: rgba(255,255,255,0.1);
+  border-color: rgba(255,255,255,0.35);
+}
+
+/* Disposition breakdown (harvest) */
+.disposition-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.disposition-total-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+  background: rgba(0,0,0,0.3);
+  border-radius: var(--radius-sm);
+  font-size: 0.82rem;
+  color: var(--text-secondary);
+}
+
+.disposition-total-row b {
+  color: #fff;
+}
+
+.disposition-total-row.over-budget {
+  color: #fca5a5;
+  border: 1px solid rgba(239,68,68,0.35);
+}
+
+.disposition-total-row.balanced {
+  color: #6ee7b7;
+  border: 1px solid rgba(16,185,129,0.35);
+}
+
+/* ==========================================================
+   MODAL COLOUR VARIANTS (gold = farmer, blue = subplot insp, amber = harvest)
+   ========================================================== */
+.modal-card.variant-gold {
+  border-top-color: var(--brand-gold);
+}
+
+.modal-card.variant-blue {
+  border-top-color: #3b82f6;
+}
+
+.modal-card.variant-amber {
+  border-top-color: #f59e0b;
+}
+
+.modal-card.variant-green {
+  border-top-color: #22c55e;
+}
+
+/* ==========================================================
+   EXPORT PANEL (in drawer)
+   ========================================================== */
+.export-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 4px 0;
+}
+
+.export-panel-title {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 2px;
+}
+
+.export-btn-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.export-type-btn {
+  flex: 1;
+  min-width: 100px;
+  background: rgba(0,240,255,0.08);
+  border: 1px solid rgba(0,240,255,0.25);
+  border-radius: var(--radius-sm);
+  color: #00f0ff;
+  font-size: 0.78rem;
+  font-weight: 700;
+  padding: 9px 8px;
+  cursor: pointer;
+  text-align: center;
+  transition: background 0.15s;
+}
+
+.export-type-btn:hover {
+  background: rgba(0,240,255,0.18);
+}
+
+.export-type-btn.csv {
+  color: #fde68a;
+  border-color: rgba(234,179,8,0.4);
+  background: rgba(234,179,8,0.08);
+}
+
+.export-type-btn.csv:hover {
+  background: rgba(234,179,8,0.18);
+}
+
+/* ==========================================================
+   5-STAGE INSPECTION WORKFLOW STYLES
+   ========================================================== */
+.drawer-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  background: rgba(0, 0, 0, 0.35);
+  border-radius: var(--radius-md);
+  margin-bottom: 12px;
+  overflow-x: auto;
+  white-space: nowrap;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.drawer-tabs::-webkit-scrollbar {
+  display: none;
+}
+
+.drawer-tab-btn {
+  flex: 1;
+  min-width: 60px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-size: 0.74rem;
+  font-weight: 700;
+  padding: 7px 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  transition: all 0.18s ease;
+  user-select: none;
+}
+
+.drawer-tab-btn .step-num {
+  width: 17px;
+  height: 17px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text-secondary);
+  font-size: 0.65rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+
+.drawer-tab-btn.active {
+  background: var(--brand-green);
+  border-color: var(--brand-green-light);
+  color: #fff;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+
+.drawer-tab-btn.active .step-num {
+  background: var(--brand-gold);
+  color: #0c241c;
+}
+
+.drawer-tab-btn.completed .step-num {
+  background: var(--success-color);
+  color: #fff;
+}
+
+/* Inspection Section Cards */
+.insp-section-card {
+  background: rgba(14, 30, 23, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  margin-bottom: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.insp-section-card.highlight-card {
+  background: linear-gradient(180deg, rgba(228, 168, 52, 0.08), rgba(14, 30, 23, 0.8));
+  border-color: rgba(228, 168, 52, 0.35);
+}
+
+.card-section-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--brand-gold);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.card-section-title .subtext {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  font-weight: 500;
+  text-transform: none;
+}
+
+.status-pill {
+  font-size: 0.65rem;
+  padding: 2px 8px;
+  border-radius: var(--radius-full);
+  background: rgba(234, 179, 8, 0.16);
+  color: #fde047;
+  border: 1px solid rgba(234, 179, 8, 0.35);
+}
+
+.status-pill.success {
+  background: rgba(34, 197, 94, 0.16);
+  color: #4ade80;
+  border-color: rgba(34, 197, 94, 0.35);
+}
+
+/* Form Controls in Inspection Flow */
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.form-group label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+  background: var(--bg-input);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: #fff;
+  padding: 8px 10px;
+  font-size: 0.86rem;
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+  border-color: #00f0ff;
+}
+
+/* Conditional Block animation */
+.conditional-block {
+  animation: fadeInDown 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: rgba(0, 0, 0, 0.22);
+  padding: 10px;
+  border-radius: var(--radius-sm);
+  border-left: 3px solid var(--brand-gold);
+}
+
+@keyframes fadeInDown {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.alert-box {
+  padding: 7px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.alert-box.warning {
+  background: rgba(239, 68, 68, 0.18);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  color: #fca5a5;
+}
+
+/* Chip Groups (Pill Checkboxes) */
+.chip-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 5px 9px;
+  border-radius: var(--radius-full);
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+  transition: all 0.15s ease;
+}
+
+.chip input {
+  accent-color: var(--brand-gold);
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  cursor: pointer;
+}
+
+.chip:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.chip.active,
+.chip:has(input:checked) {
+  background: rgba(228, 168, 52, 0.2);
+  border-color: var(--brand-gold);
+  color: #fff;
+}
+
+/* Stepper Navigation Bar */
+.stepper-nav-bar {
+  display: flex;
+  gap: 10px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.stepper-btn {
+  flex: 1;
+  height: 42px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-weight: 700;
+  font-size: 0.84rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  border: none;
+  transition: all 0.15s ease;
+}
+
+.stepper-btn.back {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  color: var(--text-secondary);
+  max-width: 110px;
+}
+
+.stepper-btn.back:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+
+.stepper-btn.save-all-btn {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(16, 185, 129, 0.35);
+}
+
+.stepper-btn.save-all-btn:hover {
+  filter: brightness(1.1);
+}
+
+/* Collapsible Section Toggles */
+.collapsible-toggle {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+  background: rgba(0, 0, 0, 0.28);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: var(--radius-sm);
+  font-size: 0.77rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.15s;
+}
+
+.collapsible-toggle:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+}
+
+.collapsible-toggle .chevron {
+  font-size: 0.65rem;
+  transition: transform 0.2s ease;
+}
+
+.collapsible-toggle.active .chevron {
+  transform: rotate(180deg);
+}
+
+.collapsible-content {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 6px;
+}
+
+/* Signature Pad */
+.signature-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.text-btn {
+  background: transparent;
+  border: none;
+  color: #00f0ff;
+  font-size: 0.72rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+
+.text-btn:hover {
+  text-decoration: underline;
+}
+
+.signature-canvas-wrapper {
+  width: 100%;
+  height: 110px;
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px dashed rgba(228, 168, 52, 0.4);
+  border-radius: var(--radius-sm);
+  position: relative;
+  overflow: hidden;
+}
+
+#signature-canvas {
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  cursor: crosshair;
+  display: block;
+}
+
+.helper-text {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  margin-top: -4px;
+}
+
+/* Export action buttons */
+.export-actions-grid {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.export-btn-full {
+  flex: 1;
+  min-width: 100px;
+  padding: 8px 10px;
+  border-radius: var(--radius-sm);
+  font-size: 0.74rem;
+  font-weight: 700;
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.06);
+  color: #fff;
+  transition: all 0.15s ease;
+}
+
+.export-btn-full:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.export-btn-full.ics-csv {
+  background: rgba(234, 179, 8, 0.12);
+  border-color: rgba(234, 179, 8, 0.35);
+  color: #fde047;
+}
+
+.export-btn-full.ics-json {
+  background: rgba(0, 240, 255, 0.1);
+  border-color: rgba(0, 240, 255, 0.3);
+  color: #00f0ff;
+}
+
+.export-btn-full.ics-geojson {
+  background: rgba(34, 197, 94, 0.12);
+  border-color: rgba(34, 197, 94, 0.35);
+  color: #4ade80;
+}
+
+

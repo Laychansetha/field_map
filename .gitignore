@@ -24,5 +24,6 @@ desktop.ini
 *.swp
 *.swo
 
-# Logs
+# Logs & scratch text files
 *.log
+*.txt

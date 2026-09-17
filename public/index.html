@@ -40,6 +40,13 @@
         </div>
         
         <div class="header-actions">
+          <button id="btn-export-all" class="icon-btn" title="Export All Inspection Data" aria-label="Export All Data">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+              <polyline points="7 10 12 15 17 10"></polyline>
+              <line x1="12" y1="15" x2="12" y2="3"></line>
+            </svg>
+          </button>
           <button id="btn-toggle-filters" class="icon-btn" title="Toggle Filters" aria-label="Toggle Filters">
             <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
               <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
@@ -255,6 +262,7 @@
         </div>
 
         <div class="plot-card" id="drawer-plot-info" style="display: none;">
+          <!-- Plot title row (always visible) -->
           <div class="plot-title-row">
             <div>
               <span class="plot-eyebrow" id="card-site">Keo Seima · Srea Chhuk</span>
@@ -274,183 +282,982 @@
             </div>
           </div>
 
-          <div class="details-grid">
-            <div class="detail-item">
-              <span class="detail-label">Village</span>
-              <strong id="card-village">Sre Andaol</strong>
-            </div>
-            <div class="detail-item">
-              <span class="detail-label">Commune</span>
-              <strong id="card-commune">Srea Chhuk</strong>
-            </div>
-            <div class="detail-item">
-              <span class="detail-label">Year Joined</span>
-              <strong id="card-year">2022</strong>
-            </div>
-            <div class="detail-item">
-              <span class="detail-label">Coordinates</span>
-              <strong id="card-coords">12.3456, 106.7891</strong>
-            </div>
+          <!-- ===== 5-STAGE INSPECTION WORKFLOW TAB BAR ===== -->
+          <div class="drawer-tabs" id="drawer-tab-bar" role="tablist">
+            <button class="drawer-tab-btn active" data-tab="tab-farmer" id="tab-btn-farmer" title="Stage 1: Farmer Profile">
+              <span class="step-num">1</span>
+              <span class="step-title">Farmer</span>
+            </button>
+            <button class="drawer-tab-btn" data-tab="tab-parcel" id="tab-btn-parcel" title="Stage 2: Parcel / Plot Baseline">
+              <span class="step-num">2</span>
+              <span class="step-title">Parcel</span>
+            </button>
+            <button class="drawer-tab-btn" data-tab="tab-subplots" id="tab-btn-subplots" title="Stage 3: Subplot Map Sketches">
+              <span class="step-num">3</span>
+              <span class="step-title">Subplots</span>
+            </button>
+            <button class="drawer-tab-btn" data-tab="tab-harvest" id="tab-btn-harvest" title="Stage 4: Harvest &amp; Threshing">
+              <span class="step-num">4</span>
+              <span class="step-title">Harvest</span>
+            </button>
+            <button class="drawer-tab-btn" data-tab="tab-confirm" id="tab-btn-confirm" title="Stage 5: Post-Harvest &amp; Confirmation">
+              <span class="step-num">5</span>
+              <span class="step-title">Confirm</span>
+            </button>
           </div>
 
-          <!-- Inspection Subplots Management Section -->
-          <div class="subplots-section">
-            <div class="subplots-header">
-              <div class="subplots-title-group">
-                <span class="section-eyebrow">FIELD INSPECTION</span>
-                <div class="title-with-count">
-                  <h3>Subplots</h3>
-                  <span id="subplots-count-badge" class="badge subplots-badge">0</span>
+          <!-- =====================================================
+               STAGE 1: FARMER LEVEL (General & Compliance)
+               ===================================================== -->
+          <div class="drawer-tab-panel active" id="tab-farmer">
+            <!-- Compliance Filter -->
+            <div class="insp-section-card">
+              <div class="card-section-title">
+                <span>🌾 Compliance Quick Check</span>
+                <span class="badge status-pill" id="badge-farmer-compliance">Required</span>
+              </div>
+              <div class="form-group">
+                <label for="f-compliant">Farmer Compliance Status *</label>
+                <select id="f-compliant" class="form-select">
+                  <option value="1">1: Compliant (Standard Organic Inspection)</option>
+                  <option value="2">2: Non-compliant (Infringement Found)</option>
+                  <option value="3">3: Resigned (Farmer Resignation)</option>
+                </select>
+              </div>
+
+              <!-- Conditional Non-Compliance Block -->
+              <div id="nc-details-block" class="conditional-block" style="display: none;">
+                <div class="alert-box warning">
+                  ⚠️ Non-compliance / Resignation incident report
+                </div>
+                <div class="form-group">
+                  <label>Violation Infringement Types</label>
+                  <div class="chip-group" id="f-nc-types">
+                    <label class="chip"><input type="checkbox" value="Using fertilizer"> Chemical Fertilizer</label>
+                    <label class="chip"><input type="checkbox" value="Using herbicide"> Chemical Herbicide</label>
+                    <label class="chip"><input type="checkbox" value="Using pesticide"> Chemical Pesticide</label>
+                    <label class="chip"><input type="checkbox" value="Land clearance"> Forest Clearance</label>
+                    <label class="chip"><input type="checkbox" value="Land expansion"> Unauthorized Expansion</label>
+                    <label class="chip"><input type="checkbox" value="Burning stubble"> Straw / Stubble Burning</label>
+                    <label class="chip"><input type="checkbox" value="Other"> Other</label>
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label for="f-nc-remark">Inspector Infringement Remarks</label>
+                  <textarea id="f-nc-remark" rows="2" placeholder="Describe violation evidence, affected parcels..."></textarea>
+                </div>
+                <div class="form-row-two">
+                  <div class="form-group">
+                    <label for="f-nc-date">Date of Incident / Resign</label>
+                    <input type="date" id="f-nc-date" />
+                  </div>
+                  <div class="form-group">
+                    <label for="f-nc-status">Status at Incident</label>
+                    <select id="f-nc-status">
+                      <option value="Organic">Organic</option>
+                      <option value="New_Organic">New_Organic</option>
+                      <option value="Ibis II">Ibis II</option>
+                      <option value="Ibis I">Ibis I</option>
+                      <option value="WF">Wildlife Friendly</option>
+                    </select>
+                  </div>
                 </div>
               </div>
-              <button id="btn-start-drawing" class="action-btn draw-subplot-btn" title="Sketch subplots within this main plot">
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M12 5v14M5 12h14"></path>
-                </svg>
-                <span>+ Draw Subplot</span>
-              </button>
             </div>
 
-            <!-- Subplots Allocation Tracker in Drawer -->
-            <div id="drawer-alloc-tracker" class="drawer-alloc-tracker" style="display: none;">
-              <div class="tracker-header">
-                <span>Plot Area Allocation</span>
-                <span id="drawer-alloc-badge" class="tracker-badge pending">0% of 0 ha</span>
+            <!-- Household Profile -->
+            <div id="farmer-profile-block" class="insp-section-card">
+              <div class="card-section-title">
+                <span>👤 Household &amp; Farmer Profile</span>
+                <span class="subtext" id="f-family-display">Family --</span>
               </div>
-              <div class="tracker-bar">
-                <div id="drawer-alloc-fill" class="tracker-fill" style="width: 0%;"></div>
+              <div class="form-row-two">
+                <div class="form-group">
+                  <label for="f-head-name">Head of Family Name *</label>
+                  <input type="text" id="f-head-name" placeholder="Full name in Khmer/Latin" autocomplete="off" />
+                </div>
+                <div class="form-group">
+                  <label for="f-gender">Gender of Head *</label>
+                  <select id="f-gender">
+                    <option value="1">1: Male</option>
+                    <option value="2">2: Female</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="form-row-two">
+                <div class="form-group">
+                  <label for="f-is-head-interviewee">Is Interviewee the Head?</label>
+                  <select id="f-is-head-interviewee">
+                    <option value="1">1: Yes (Head interviewed)</option>
+                    <option value="2">2: No (Other member)</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="f-ethnicity">Ethnicity</label>
+                  <select id="f-ethnicity">
+                    <option value="1">1: Khmer</option>
+                    <option value="2">2: Indigenous People (IP)</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Conditional Interviewee row -->
+              <div id="interviewee-other-row" class="form-row-two conditional-block" style="display: none;">
+                <div class="form-group">
+                  <label for="f-interviewee-name">Interviewee Name</label>
+                  <input type="text" id="f-interviewee-name" placeholder="Name of person interviewed" autocomplete="off" />
+                </div>
+                <div class="form-group">
+                  <label for="f-interviewee-gender">Interviewee Gender</label>
+                  <select id="f-interviewee-gender">
+                    <option value="1">1: Male</option>
+                    <option value="2">2: Female</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="form-row-two">
+                <div class="form-group">
+                  <label for="f-status">Farmer Status</label>
+                  <select id="f-status">
+                    <option value="1">1: Organic</option>
+                    <option value="2">2: New_Organic</option>
+                    <option value="3">3: Ibis II</option>
+                    <option value="4">4: Ibis I</option>
+                    <option value="5">5: Wildlife Friendly</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="f-labor-mf">Primary Farm Labor</label>
+                  <select id="f-labor-mf">
+                    <option value="1">1: Male</option>
+                    <option value="2">2: Female</option>
+                    <option value="3">3: Equal</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="form-section-divider">Household Demographics</div>
+              <div class="form-row-three">
+                <div class="form-group">
+                  <label for="f-members">Total Members</label>
+                  <input type="number" id="f-members" min="1" max="30" value="4" />
+                </div>
+                <div class="form-group">
+                  <label for="f-females">Female Count</label>
+                  <input type="number" id="f-females" min="0" max="30" value="2" />
+                </div>
+                <div class="form-group">
+                  <label for="f-school">Kids in School</label>
+                  <input type="number" id="f-school" min="0" max="20" value="2" />
+                </div>
+              </div>
+
+              <div class="form-row-two">
+                <div class="form-group">
+                  <label for="f-toilet">Household Toilet?</label>
+                  <select id="f-toilet">
+                    <option value="1">1: Yes</option>
+                    <option value="2">2: No</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="f-disable">Person with Disability?</label>
+                  <select id="f-disable">
+                    <option value="2">2: No</option>
+                    <option value="1">1: Yes</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="form-section-divider">Training &amp; Farm Records</div>
+              <div class="form-group">
+                <label>Trainings Attended</label>
+                <div class="chip-group" id="f-trainings">
+                  <label class="chip"><input type="checkbox" value="1"> Organic Standards</label>
+                  <label class="chip"><input type="checkbox" value="2"> Fair for Life (FFL)</label>
+                  <label class="chip"><input type="checkbox" value="3"> Land Preparation</label>
+                  <label class="chip"><input type="checkbox" value="4"> Farm Records Book</label>
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label>Farm Tools &amp; Records Kept</label>
+                <div class="chip-group" id="f-records">
+                  <label class="chip"><input type="checkbox" value="map"> Plot Map Available</label>
+                  <label class="chip"><input type="checkbox" value="book"> Daily Farm Record Kept</label>
+                </div>
+              </div>
+
+              <div class="form-section-divider">Livestock Counts</div>
+              <div class="form-row-three">
+                <div class="form-group">
+                  <label for="f-cattle">Cattle</label>
+                  <input type="number" id="f-cattle" min="0" value="0" />
+                </div>
+                <div class="form-group">
+                  <label for="f-buffalo">Buffalo</label>
+                  <input type="number" id="f-buffalo" min="0" value="0" />
+                </div>
+                <div class="form-group">
+                  <label for="f-other-animals">Other Animals</label>
+                  <input type="number" id="f-other-animals" min="0" value="0" />
+                </div>
               </div>
             </div>
-            
-            <div id="subplots-list" class="subplots-list">
-              <!-- Dynamically populated or empty placeholder -->
+
+            <!-- Stepper Nav Bar -->
+            <div class="stepper-nav-bar">
+              <button type="button" class="stepper-btn primary-btn" id="btn-next-to-parcel">
+                <span>Save &amp; Continue to Parcel</span> →
+              </button>
             </div>
           </div>
 
-          <!-- Navigation & Action Buttons -->
-          <div class="plot-actions">
+          <!-- =====================================================
+               STAGE 2: PARCEL / PLOT LEVEL (Physical Land & History)
+               ===================================================== -->
+          <div class="drawer-tab-panel" id="tab-parcel">
+            <div class="insp-section-card">
+              <div class="card-section-title">
+                <span>🗺 Main Plot Land Baseline</span>
+                <span class="subtext" id="p-plot-display">Plot --</span>
+              </div>
 
+              <div class="form-row-two">
+                <div class="form-group">
+                  <label for="p-inspection-date">Inspection Date *</label>
+                  <input type="date" id="p-inspection-date" />
+                </div>
+                <div class="form-group">
+                  <label for="p-area-ha">GIS Measured Area (ha) *</label>
+                  <input type="number" id="p-area-ha" step="0.01" min="0.01" />
+                </div>
+              </div>
 
-            <!-- Field Walking Compass Mode -->
-            <button id="btn-start-compass" class="action-btn walk-btn">
-              <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
-                <circle cx="12" cy="12" r="10"></circle>
-                <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" fill="currentColor"></polygon>
-              </svg>
-              <span>Field Compass (Walk Bunds)</span>
-            </button>
+              <div class="form-group">
+                <label for="p-land-situation">Land Situation / Tenure *</label>
+                <select id="p-land-situation">
+                  <option value="1">1: Own Land</option>
+                  <option value="2">2: Land Loan</option>
+                  <option value="3">3: Land Purchase</option>
+                  <option value="4">4: Land Lease / Rent</option>
+                  <option value="5">5: Lent to Someone</option>
+                  <option value="6">6: Inherited</option>
+                </select>
+              </div>
 
-            <!-- Utility Buttons -->
-            <div class="action-row-secondary">
-              <button id="btn-copy-coords" class="secondary-btn" title="Copy GPS Coordinates">
-                <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              <div class="form-row-two">
+                <div class="form-group">
+                  <label for="p-irrigation">Irrigation System *</label>
+                  <select id="p-irrigation">
+                    <option value="1">1: Rainfed</option>
+                    <option value="2">2: Canal / Reservoir</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="p-contamination">Contamination Risk?</label>
+                  <select id="p-contamination">
+                    <option value="2">2: No (Safe Buffer)</option>
+                    <option value="1">1: Yes (Risk Nearby)</option>
+                  </select>
+                </div>
+              </div>
+
+              <!-- Conditional Contamination Mitigation -->
+              <div id="p-contamination-block" class="form-group conditional-block" style="display: none;">
+                <label for="p-avoid-method">Mitigation / Buffer Method *</label>
+                <input type="text" id="p-avoid-method" placeholder="e.g. 5m vegetative buffer, raised dike, ditch..." autocomplete="off" />
+              </div>
+
+              <div class="form-section-divider">Organic Integrity History</div>
+              <div class="form-group">
+                <label for="p-last-prohibited">Prohibited Chemicals Used in Past 3 Years?</label>
+                <select id="p-last-prohibited">
+                  <option value="2">2: No (Clean Organic)</option>
+                  <option value="1">1: Yes (Chemicals Used)</option>
+                </select>
+              </div>
+
+              <!-- Conditional Chemical Details -->
+              <div id="p-prohibited-details" class="conditional-block" style="display: none;">
+                <div class="form-group">
+                  <label>Prohibited Inputs Applied</label>
+                  <div class="chip-group" id="p-prohibited-chips">
+                    <label class="chip"><input type="checkbox" value="Fertilizer"> Chemical Fertilizer</label>
+                    <label class="chip"><input type="checkbox" value="Herbicide"> Chemical Herbicide</label>
+                    <label class="chip"><input type="checkbox" value="Pesticide"> Chemical Pesticide</label>
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label for="p-prohibited-date">Date Last Applied</label>
+                  <input type="date" id="p-prohibited-date" />
+                </div>
+              </div>
+
+              <div class="form-group">
+                <label for="p-other-crop">Plant Other Crops / Intercropping?</label>
+                <select id="p-other-crop">
+                  <option value="2">2: No (Rice Only)</option>
+                  <option value="1">1: Yes (Secondary Crops)</option>
+                </select>
+              </div>
+
+              <!-- Conditional Intercrop Details -->
+              <div id="p-other-crop-details" class="form-row-two conditional-block" style="display: none;">
+                <div class="form-group">
+                  <label for="p-crop-name">Which Crop?</label>
+                  <input type="text" id="p-crop-name" placeholder="e.g. Mungbean, Watermelon..." autocomplete="off" />
+                </div>
+                <div class="form-group">
+                  <label for="p-crop-status">Status at Harvest</label>
+                  <select id="p-crop-status">
+                    <option value="Before">Harvested before rice</option>
+                    <option value="During">Same time as rice</option>
+                    <option value="After">Harvested after rice</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="form-section-divider">Mass Balance History (Last Season)</div>
+              <div class="collapsible-toggle" id="p-mass-balance-toggle">
+                <span>📊 Previous Season Kg Records</span>
+                <span class="chevron" id="p-mass-chevron">▼</span>
+              </div>
+              <div id="p-mass-balance-content" class="collapsible-content" style="display: none;">
+                <div class="form-row-two">
+                  <div class="form-group">
+                    <label for="p-exp-last-year">Expected Last Year (kg)</label>
+                    <input type="number" id="p-exp-last-year" placeholder="kg" />
+                  </div>
+                  <div class="form-group">
+                    <label for="p-actual-last-year">Actual Harvested (kg)</label>
+                    <input type="number" id="p-actual-last-year" placeholder="kg" />
+                  </div>
+                </div>
+                <div class="form-row-three">
+                  <div class="form-group">
+                    <label for="p-sold-ircc">Sold to IRCC (kg)</label>
+                    <input type="number" id="p-sold-ircc" placeholder="kg" />
+                  </div>
+                  <div class="form-group">
+                    <label for="p-seed-kept">Seed Kept (kg)</label>
+                    <input type="number" id="p-seed-kept" placeholder="kg" />
+                  </div>
+                  <div class="form-group">
+                    <label for="p-consumed">Household (kg)</label>
+                    <input type="number" id="p-consumed" placeholder="kg" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Stepper Nav Bar -->
+            <div class="stepper-nav-bar">
+              <button type="button" class="stepper-btn back secondary-btn" id="btn-back-to-farmer">← Farmer</button>
+              <button type="button" class="stepper-btn next primary-btn" id="btn-next-to-subplots">Continue to Subplots →</button>
+            </div>
+          </div>
+
+          <!-- =====================================================
+               STAGE 3: SUBPLOTS LEVEL (Map Sketches & Badges)
+               ===================================================== -->
+          <div class="drawer-tab-panel" id="tab-subplots">
+            <div class="details-grid">
+              <div class="detail-item">
+                <span class="detail-label">Village</span>
+                <strong id="card-village">Sre Andaol</strong>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">Commune</span>
+                <strong id="card-commune">Srea Chhuk</strong>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">Year Joined</span>
+                <strong id="card-year">2022</strong>
+              </div>
+              <div class="detail-item">
+                <span class="detail-label">Coordinates</span>
+                <strong id="card-coords">12.3456, 106.7891</strong>
+              </div>
+            </div>
+
+            <!-- Subplots Management Section -->
+            <div class="subplots-section">
+              <div class="subplots-header">
+                <div class="subplots-title-group">
+                  <span class="section-eyebrow">FIELD INSPECTION</span>
+                  <div class="title-with-count">
+                    <h3>Subplots</h3>
+                    <span id="subplots-count-badge" class="badge subplots-badge">0</span>
+                  </div>
+                </div>
+                <button id="btn-start-drawing" class="action-btn draw-subplot-btn" title="Sketch subplots within this main plot">
+                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M12 5v14M5 12h14"></path>
+                  </svg>
+                  <span>+ Draw Subplot</span>
+                </button>
+              </div>
+
+              <!-- Allocation Tracker in Drawer -->
+              <div id="drawer-alloc-tracker" class="drawer-alloc-tracker" style="display: none;">
+                <div class="tracker-header">
+                  <span>Plot Area Allocation</span>
+                  <span id="drawer-alloc-badge" class="tracker-badge pending">0% of 0 ha</span>
+                </div>
+                <div class="tracker-bar">
+                  <div id="drawer-alloc-fill" class="tracker-fill" style="width: 0%;"></div>
+                </div>
+              </div>
+
+              <div id="subplots-list" class="subplots-list">
+                <!-- Dynamically populated -->
+              </div>
+            </div>
+
+            <!-- Navigation & Actions -->
+            <div class="plot-actions">
+              <button id="btn-start-compass" class="action-btn walk-btn">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"></circle>
+                  <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" fill="currentColor"></polygon>
                 </svg>
-                <span>Copy GPS</span>
+                <span>Field Compass (Walk Bunds)</span>
               </button>
-
-              <button id="btn-export-kml" class="secondary-btn" title="Download GPX/KML for Handheld GPS / OsmAnd">
+              <div class="action-row-secondary">
+                <button id="btn-copy-coords" class="secondary-btn" title="Copy GPS Coordinates">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                    <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                  </svg>
+                  <span>Copy GPS</span>
+                </button>
+                <button id="btn-export-kml" class="secondary-btn" title="Download KML">
+                  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="7 10 12 15 17 10"></polyline>
+                    <line x1="12" y1="15" x2="12" y2="3"></line>
+                  </svg>
+                  <span>Export KML</span>
+                </button>
+              </div>
+              <button id="btn-export-subplots" class="secondary-btn export-subplots-btn" title="Export subplots GeoJSON">
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                  <polyline points="7 10 12 15 17 10"></polyline>
-                  <line x1="12" y1="15" x2="12" y2="3"></line>
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                  <polyline points="14 2 14 8 20 8"></polyline>
+                  <line x1="12" y1="18" x2="12" y2="12"></line>
+                  <line x1="9" y1="15" x2="15" y2="15"></line>
                 </svg>
-                <span>Export KML</span>
+                <span>Export Subplots (GeoJSON)</span>
               </button>
             </div>
 
-            <!-- Export All Subplots Button -->
-            <button id="btn-export-subplots" class="secondary-btn export-subplots-btn" title="Export all sketched subplots as standard GeoJSON for inspection apps">
-              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
-                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-                <polyline points="14 2 14 8 20 8"></polyline>
-                <line x1="12" y1="18" x2="12" y2="12"></line>
-                <line x1="9" y1="15" x2="15" y2="15"></line>
-              </svg>
-              <span>Export Subplots (GeoJSON)</span>
-            </button>
+            <!-- Stepper Nav Bar -->
+            <div class="stepper-nav-bar" style="margin-top: 14px;">
+              <button type="button" class="stepper-btn back secondary-btn" id="btn-back-to-parcel">← Parcel</button>
+              <button type="button" class="stepper-btn next primary-btn" id="btn-next-to-harvest">Continue to Harvest →</button>
+            </div>
           </div>
+
+          <!-- =====================================================
+               STAGE 4: HARVEST / THRESHING LEVEL
+               ===================================================== -->
+          <div class="drawer-tab-panel" id="tab-harvest">
+            <div class="insp-section-card">
+              <div class="card-section-title">
+                <span>🌾 Threshing Record (ICS_2026)</span>
+                <span class="badge status-pill" id="badge-threshing-status">Pending</span>
+              </div>
+
+              <div class="form-group">
+                <label for="h-complete">Threshing Completed? *</label>
+                <select id="h-complete">
+                  <option value="1">1: Yes (Threshing finished)</option>
+                  <option value="2">2: No (Not yet complete)</option>
+                </select>
+              </div>
+
+              <!-- Conditional If Not Completed -->
+              <div id="h-incomplete-block" class="form-group conditional-block" style="display: none;">
+                <label for="h-reason-no">Reason Threshing Not Done</label>
+                <select id="h-reason-no">
+                  <option value="Not mature">Paddy not yet mature</option>
+                  <option value="Machine delay">Threshing contractor delayed</option>
+                  <option value="Weather">Adverse rain / weather</option>
+                  <option value="Labor">Labor shortage</option>
+                  <option value="Other">Other reason</option>
+                </select>
+              </div>
+
+              <!-- Threshing Completed Details -->
+              <div id="h-complete-block">
+                <div class="form-row-two">
+                  <div class="form-group">
+                    <label for="h-date">Threshing Date</label>
+                    <input type="date" id="h-date" />
+                  </div>
+                  <div class="form-group">
+                    <label for="h-method">Threshing Method</label>
+                    <select id="h-method">
+                      <option value="3">3: Combine Harvester</option>
+                      <option value="2">2: Hand Tractor Thresher</option>
+                      <option value="1">1: Manual / Hand Beating</option>
+                    </select>
+                  </div>
+                </div>
+
+                <!-- Machine Sanitation & Flush -->
+                <div id="h-machine-block" class="form-row-two">
+                  <div class="form-group">
+                    <label for="h-owner">Machine Owner / Operator</label>
+                    <input type="text" id="h-owner" placeholder="Contractor name" autocomplete="off" />
+                  </div>
+                  <div class="form-group">
+                    <label for="h-flush">Organic Flush Quantity (kg)</label>
+                    <input type="number" id="h-flush" placeholder="e.g. 50 kg flushed" value="0" />
+                  </div>
+                </div>
+
+                <div class="form-row-two">
+                  <div class="form-group">
+                    <label for="h-dry-loc">Paddy Drying Location</label>
+                    <select id="h-dry-loc">
+                      <option value="1">1: Tarp on Ground</option>
+                      <option value="2">2: Concrete Yard</option>
+                      <option value="3">3: Direct to Mill</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label for="h-diff-plots">Separate Threshing per Subplot?</label>
+                    <select id="h-diff-plots">
+                      <option value="1">1: Yes (Segregated varieties)</option>
+                      <option value="2">2: No (Mixed)</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div class="form-section-divider">Actual Paddy Disposition Breakdown</div>
+                <p class="helper-text">Sale + Consumption + Seed should equal Actual Harvest.</p>
+
+                <div class="form-group">
+                  <label for="h-actual-kg">Total Actual Harvest (kg) *</label>
+                  <input type="number" id="h-actual-kg" placeholder="e.g. 3500 kg" step="10" />
+                </div>
+
+                <div class="form-row-three">
+                  <div class="form-group">
+                    <label for="h-sale-kg">For Sale (kg)</label>
+                    <input type="number" id="h-sale-kg" placeholder="kg" step="10" />
+                  </div>
+                  <div class="form-group">
+                    <label for="h-consume-kg">Household (kg)</label>
+                    <input type="number" id="h-consume-kg" placeholder="kg" step="10" />
+                  </div>
+                  <div class="form-group">
+                    <label for="h-seed-kg">Seed Kept (kg)</label>
+                    <input type="number" id="h-seed-kg" placeholder="kg" step="10" />
+                  </div>
+                </div>
+
+                <div class="disposition-total-row" id="h-balance-row">
+                  <span>Allocated: <b id="h-alloc-sum">0 kg</b></span>
+                  <span>Balance: <b id="h-alloc-balance">0 kg</b></span>
+                </div>
+
+                <div class="form-section-divider">Payment for Threshing</div>
+                <div class="form-row-two">
+                  <div class="form-group">
+                    <label for="h-payment-type">Payment Mode</label>
+                    <select id="h-payment-type">
+                      <option value="1">1: Cash (KHR)</option>
+                      <option value="2">2: In-Kind (Paddy kg)</option>
+                    </select>
+                  </div>
+                  <div class="form-group">
+                    <label for="h-payment-amount" id="h-payment-label">Amount in Riel (KHR)</label>
+                    <input type="number" id="h-payment-amount" placeholder="e.g. 250000" />
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Stepper Nav Bar -->
+            <div class="stepper-nav-bar">
+              <button type="button" class="stepper-btn back secondary-btn" id="btn-back-to-subplots">← Subplots</button>
+              <button type="button" class="stepper-btn next primary-btn" id="btn-next-to-confirm">Post-Harvest &amp; Confirm →</button>
+            </div>
+          </div>
+
+          <!-- =====================================================
+               STAGE 5: POST-HARVEST, CHAMKAR & CONFIRMATION
+               ===================================================== -->
+          <div class="drawer-tab-panel" id="tab-confirm">
+            <!-- Chamkar Card -->
+            <div class="insp-section-card">
+              <div class="card-section-title">
+                <span>🌳 Chamkar (Highland Orchard / Other Crops)</span>
+              </div>
+              <div class="form-group">
+                <label for="c-have-chamkar">Does Farmer Have Chamkar Land?</label>
+                <select id="c-have-chamkar">
+                  <option value="2">2: No Chamkar</option>
+                  <option value="1">1: Yes (Has Chamkar)</option>
+                </select>
+              </div>
+
+              <div id="c-chamkar-block" class="conditional-block" style="display: none;">
+                <div class="form-row-two">
+                  <div class="form-group">
+                    <label for="c-chamkar-num">Number of Chamkars</label>
+                    <input type="number" id="c-chamkar-num" min="1" value="1" />
+                  </div>
+                  <div class="form-group">
+                    <label for="c-chamkar-area">Total Chamkar Area (ha)</label>
+                    <input type="number" id="c-chamkar-area" step="0.1" placeholder="ha" />
+                  </div>
+                </div>
+                <div class="form-group">
+                  <label>Chamkar Crops Grown</label>
+                  <div class="chip-group" id="c-chamkar-crops">
+                    <label class="chip"><input type="checkbox" value="Cashew"> Cashew</label>
+                    <label class="chip"><input type="checkbox" value="Cassava"> Cassava</label>
+                    <label class="chip"><input type="checkbox" value="Fruit trees"> Fruit Trees</label>
+                    <label class="chip"><input type="checkbox" value="Rubber"> Rubber</label>
+                    <label class="chip"><input type="checkbox" value="Vegetables"> Vegetables</label>
+                    <label class="chip"><input type="checkbox" value="Other"> Other</label>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Rice Barn & Storage Check -->
+            <div class="insp-section-card">
+              <div class="card-section-title">
+                <span>🛖 Storage &amp; Rice Barn Inspection</span>
+              </div>
+              <div class="form-row-two">
+                <div class="form-group">
+                  <label for="c-rice-barn">Dedicated Rice Barn?</label>
+                  <select id="c-rice-barn">
+                    <option value="1">1: Yes (Has barn)</option>
+                    <option value="2">2: No (Stored in house)</option>
+                  </select>
+                </div>
+                <div class="form-group" id="c-chambers-group">
+                  <label for="c-chambers">Barn Chambers</label>
+                  <input type="number" id="c-chambers" min="1" value="1" />
+                </div>
+              </div>
+
+              <div class="form-row-two">
+                <div class="form-group">
+                  <label for="c-barn-clean">Barn Clean Inside/Out?</label>
+                  <select id="c-barn-clean">
+                    <option value="1">1: Yes (Clean &amp; dry)</option>
+                    <option value="2">2: No (Needs cleaning)</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="c-barn-chemicals">Free of Agrochemicals?</label>
+                  <select id="c-barn-chemicals">
+                    <option value="1">1: Yes (No chemicals)</option>
+                    <option value="2">2: No (Risk detected)</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- Environmental Standards Card -->
+            <div class="insp-section-card">
+              <div class="card-section-title">
+                <span>🌲 Environmental &amp; Zero-Deforestation</span>
+              </div>
+              <div class="form-row-two">
+                <div class="form-group">
+                  <label for="c-clear-forest">New Forest Cleared?</label>
+                  <select id="c-clear-forest">
+                    <option value="2">2: No (Compliant)</option>
+                    <option value="1">1: Yes (Infringement)</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="c-expand-land">Boundary Expanded?</label>
+                  <select id="c-expand-land">
+                    <option value="2">2: No (Compliant)</option>
+                    <option value="1">1: Yes (Infringement)</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="form-row-two">
+                <div class="form-group">
+                  <label for="c-burn-straw">Burned Rice Straw/Stubble?</label>
+                  <select id="c-burn-straw">
+                    <option value="2">2: No (Compliant)</option>
+                    <option value="1">1: Yes (Infringement)</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="c-firebreak">Buffer / Firebreak Kept?</label>
+                  <select id="c-firebreak">
+                    <option value="1">1: Yes (Protected)</option>
+                    <option value="2">2: No (Unprotected)</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+
+            <!-- Final Conclusion & Confirmations -->
+            <div class="insp-section-card highlight-card">
+              <div class="card-section-title">
+                <span>✍️ Inspection Outcome &amp; Sign-off</span>
+              </div>
+
+              <div class="form-group">
+                <label for="c-certified-status">Final Organic Recommendation *</label>
+                <select id="c-certified-status">
+                  <option value="1">1: Approved Certified Organic</option>
+                  <option value="2">2: Minor Corrective Action Needed</option>
+                  <option value="3">3: Disqualified / Sanctioned</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label for="c-conclusion-notes">Inspector Summary &amp; Conclusion</label>
+                <textarea id="c-conclusion-notes" rows="2" placeholder="Summary observations for ICS committee review..."></textarea>
+              </div>
+
+              <div class="form-row-two">
+                <div class="form-group">
+                  <label for="c-inspector-name">Lead Inspector Name *</label>
+                  <input type="text" id="c-inspector-name" placeholder="Inspector name" autocomplete="off" />
+                </div>
+                <div class="form-group">
+                  <label for="c-irpg-name">IRPG / Village Rep</label>
+                  <input type="text" id="c-irpg-name" placeholder="Village representative" autocomplete="off" />
+                </div>
+              </div>
+
+              <!-- Digital Signature Canvas -->
+              <div class="form-group">
+                <div class="signature-header">
+                  <label>Farmer / Interviewee Digital Signature</label>
+                  <button type="button" class="text-btn" id="btn-clear-signature">Clear</button>
+                </div>
+                <div class="signature-canvas-wrapper">
+                  <canvas id="signature-canvas" width="360" height="110"></canvas>
+                </div>
+              </div>
+            </div>
+
+            <!-- Save and Export Actions -->
+            <div class="stepper-nav-bar">
+              <button type="button" class="stepper-btn back secondary-btn" id="btn-back-to-harvest">← Harvest</button>
+              <button type="button" class="stepper-btn primary-btn save-all-btn" id="btn-save-complete-inspection">
+                <span>💾 Save Complete Record</span>
+              </button>
+            </div>
+
+            <div class="export-panel" style="margin-top: 14px;">
+              <div class="export-panel-title">Export ICS 2026 Data</div>
+              <div class="export-btn-row">
+                <button type="button" class="export-type-btn csv" id="btn-export-ics-csv">📊 CSV Report</button>
+                <button type="button" class="export-type-btn" id="btn-export-ics-json">📋 SurveySolutions JSON</button>
+                <button type="button" class="export-type-btn" id="btn-export-full-geojson">🗺 Full GeoJSON</button>
+              </div>
+            </div>
+          </div>
+
         </div>
       </div>
     </section>
   </main>
 
-  <!-- Modal Dialog for Saving Subplot -->
-    <div id="subplot-modal" class="modal-backdrop" style="display: none;">
-      <div class="modal-card">
-        <div class="modal-header">
-          <div>
-            <span class="modal-eyebrow" id="modal-plot-ref">Family SD041 · Plot 11</span>
-            <h2>Save Subplot Details</h2>
-          </div>
-          <button id="btn-close-modal" class="modal-close" aria-label="Close dialog">&times;</button>
+    <!-- =====================================================
+       ENRICHED SUBPLOT MODAL (with ICS 2026 Subplot Fields)
+       ===================================================== -->
+  <div id="subplot-modal" class="modal-backdrop" style="display: none;">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div>
+          <span class="modal-eyebrow" id="modal-plot-ref">Family SD041 · Plot 11</span>
+          <h2>Subplot Details &amp; Inspection</h2>
         </div>
-        
-        <form id="subplot-form" class="modal-body">
-          <!-- Allocation balance tracker banner -->
-          <div class="alloc-banner" id="subplot-alloc-banner">
-            <div class="alloc-banner-row">
-              <span>Main Plot: <b id="alloc-main-ha">0.00 ha</b> (100%)</span>
-              <span id="alloc-status-text">Available: <b id="alloc-remaining-pct">100%</b> (<span id="alloc-remaining-ha">0.00 ha</span>)</span>
+        <button id="btn-close-modal" class="modal-close" aria-label="Close dialog">&times;</button>
+      </div>
+      
+      <form id="subplot-form" class="modal-body">
+        <!-- Allocation balance tracker banner -->
+        <div class="alloc-banner" id="subplot-alloc-banner">
+          <div class="alloc-banner-row">
+            <span>Main Plot: <b id="alloc-main-ha">0.00 ha</b> (100%)</span>
+            <span id="alloc-status-text">Available: <b id="alloc-remaining-pct">100%</b> (<span id="alloc-remaining-ha">0.00 ha</span>)</span>
+          </div>
+          <div class="alloc-meter-track">
+            <div id="alloc-meter-used" class="alloc-meter-fill-used" style="width: 0%;" title="Already allocated"></div>
+            <div id="alloc-meter-current" class="alloc-meter-fill-current" style="width: 0%;" title="This subplot"></div>
+          </div>
+          <div id="alloc-warning" class="alloc-warning" style="display: none;"></div>
+        </div>
+
+        <div class="form-row-two">
+          <div class="form-group">
+            <label for="subplot-area-pct">% of Main Plot *</label>
+            <input type="number" id="subplot-area-pct" step="0.1" min="0.1" max="100" placeholder="e.g. 50" required autocomplete="off" />
+          </div>
+          <div class="form-group">
+            <label for="subplot-area-ha">Subplot Area (Hectares) *</label>
+            <input type="number" id="subplot-area-ha" step="0.01" min="0.01" placeholder="e.g. 1.23" required autocomplete="off" />
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="subplot-code">Subplot Name *</label>
+          <input type="text" id="subplot-code" placeholder="Please enter subplot name" required autocomplete="off" />
+        </div>
+
+        <div class="form-group">
+          <label for="subplot-variety">Rice Variety *</label>
+          <select id="subplot-variety">
+            <option value="Phka Rumduol">Phka Rumduol</option>
+            <option value="Red Jasmine">Red Jasmine</option>
+            <option value="Local Variety">Local Variety</option>
+            <option value="Sticky Rice">Sticky Rice</option>
+            <option value="Other">Other</option>
+            <option value="Fallow">Fallow</option>
+          </select>
+        </div>
+
+        <div class="form-group" id="custom-variety-group" style="display: none;">
+          <label for="subplot-custom-variety">Specify Variety Name *</label>
+          <input type="text" id="subplot-custom-variety" placeholder="Enter variety name" autocomplete="off" />
+        </div>
+
+        <!-- Collapsible Extended Subplot ICS 2026 Section -->
+        <div class="collapsible-toggle active" id="sp-extended-toggle">
+          <span>🌿 Subplot Inspection Details (Seed, Fertilizer, Yield)</span>
+          <span class="chevron">▼</span>
+        </div>
+        <div id="sp-extended-content" class="collapsible-content">
+          <div class="form-row-two">
+            <div class="form-group">
+              <label for="sp-seed-source">Seed Source</label>
+              <select id="sp-seed-source">
+                <option value="Own saved">Own saved seed</option>
+                <option value="IRPG">IRPG certified</option>
+                <option value="Purchased">Purchased / Member</option>
+              </select>
             </div>
-            <div class="alloc-meter-track">
-              <div id="alloc-meter-used" class="alloc-meter-fill-used" style="width: 0%;" title="Already allocated"></div>
-              <div id="alloc-meter-current" class="alloc-meter-fill-current" style="width: 0%;" title="This subplot"></div>
+            <div class="form-group">
+              <label for="sp-seed-kg">Seed Quantity (kg)</label>
+              <input type="number" id="sp-seed-kg" placeholder="kg" min="0" />
             </div>
-            <div id="alloc-warning" class="alloc-warning" style="display: none;"></div>
           </div>
 
           <div class="form-row-two">
             <div class="form-group">
-              <label for="subplot-area-pct">% of Main Plot *</label>
-              <input type="number" id="subplot-area-pct" step="0.1" min="0.1" max="100" placeholder="e.g. 50" required autocomplete="off" />
+              <label for="sp-planting-date">Broadcast / Planting Date</label>
+              <input type="date" id="sp-planting-date" />
             </div>
             <div class="form-group">
-              <label for="subplot-area-ha">Subplot Area (Hectares) *</label>
-              <input type="number" id="subplot-area-ha" step="0.01" min="0.01" placeholder="e.g. 1.23" required autocomplete="off" />
+              <label for="sp-planting-method">Planting Method</label>
+              <select id="sp-planting-method">
+                <option value="Direct seeding">Direct Seeding / Broadcasting</option>
+                <option value="Transplanting">Transplanting</option>
+                <option value="Dry nursery">Dry Nursery</option>
+                <option value="Fallow">Fallow</option>
+              </select>
             </div>
           </div>
 
           <div class="form-group">
-            <label for="subplot-code">Subplot Name *</label>
-            <input type="text" id="subplot-code" placeholder="Please enter subplot name" required autocomplete="off" />
-          </div>
-
-          <div class="form-group">
-            <label for="subplot-variety">Rice Variety *</label>
-            <select id="subplot-variety">
-              <option value="Phka Rumduol">Phka Rumduol</option>
-              <option value="Red Jasmine">Red Jasmine</option>
-              <option value="Local Variety">Local Variety</option>
-              <option value="Sticky Rice">Sticky Rice</option>
-              <option value="Other">Other</option>
-              <option value="Fallow">Fallow</option>
+            <label for="sp-fertilizer-toggle">Organic Fertilizer Applied?</label>
+            <select id="sp-fertilizer-toggle">
+              <option value="no">No</option>
+              <option value="yes">Yes</option>
             </select>
           </div>
 
-          <div class="form-group" id="custom-variety-group" style="display: none;">
-            <label for="subplot-custom-variety">Specify Variety Name *</label>
-            <input type="text" id="subplot-custom-variety" placeholder="Enter variety name" autocomplete="off" />
+          <div id="sp-fertilizer-block" class="conditional-block" style="display: none;">
+            <div class="form-group">
+              <label>Fertilizer Type</label>
+              <div class="chip-group" id="sp-fertilizer-chips">
+                <label class="chip"><input type="checkbox" value="Cow manure"> Cow manure</label>
+                <label class="chip"><input type="checkbox" value="Compost"> Compost</label>
+                <label class="chip"><input type="checkbox" value="Green manure"> Green manure</label>
+                <label class="chip"><input type="checkbox" value="Organic Fertilizer"> Organic Fertilizer</label>
+              </div>
+            </div>
+            <div class="form-row-two">
+              <div class="form-group">
+                <label for="sp-fertilizer-qty">Amount (kg)</label>
+                <input type="number" id="sp-fertilizer-qty" placeholder="kg" />
+              </div>
+              <div class="form-group">
+                <label for="sp-fertilizer-date">Application Date</label>
+                <input type="date" id="sp-fertilizer-date" />
+              </div>
+            </div>
           </div>
 
           <div class="form-group">
-            <label for="subplot-notes">Inspection Notes (Optional)</label>
-            <textarea id="subplot-notes" rows="2" placeholder="e.g. Planting date, certified organic, crop condition..."></textarea>
+            <label for="sp-protection-toggle">Crop Protection Applied?</label>
+            <select id="sp-protection-toggle">
+              <option value="no">No</option>
+              <option value="yes">Yes</option>
+            </select>
           </div>
 
-          <div class="modal-footer">
-            <button type="button" id="btn-cancel-modal" class="secondary-btn">Cancel</button>
-            <button type="submit" id="btn-save-subplot" class="primary-btn save-btn">Save Subplot</button>
+          <div id="sp-protection-block" class="conditional-block" style="display: none;">
+            <div class="form-group">
+              <label for="sp-protection-action">Protection Method / Action</label>
+              <input type="text" id="sp-protection-action" placeholder="e.g. Botanical repellent spray, traps..." autocomplete="off" />
+            </div>
+            <div class="form-row-two">
+              <div class="form-group">
+                <label for="sp-protection-qty">Amount (kg / L)</label>
+                <input type="number" id="sp-protection-qty" placeholder="Amount" />
+              </div>
+              <div class="form-group">
+                <label for="sp-protection-date">Protection Date</label>
+                <input type="date" id="sp-protection-date" />
+              </div>
+            </div>
           </div>
-        </form>
-      </div>
+
+          <div class="form-row-two">
+            <div class="form-group">
+              <label for="sp-expected-yield">Expected Harvest (kg)</label>
+              <input type="number" id="sp-expected-yield" placeholder="e.g. 1500" />
+            </div>
+            <div class="form-group">
+              <label for="sp-expected-sale">Expected for Sale (kg)</label>
+              <input type="number" id="sp-expected-sale" placeholder="e.g. 1000" />
+            </div>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="subplot-notes">Inspection Notes (Optional)</label>
+          <textarea id="subplot-notes" rows="2" placeholder="Crop condition, observations..."></textarea>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" id="btn-cancel-modal" class="secondary-btn">Cancel</button>
+          <button type="submit" id="btn-save-subplot" class="primary-btn save-btn">Save Subplot</button>
+        </div>
+      </form>
     </div>
-
-    <!-- Toast Notification -->
-    <div id="toast" class="toast"></div>
   </div>
+
+  <!-- Toast Notification -->
+  <div id="toast" class="toast"></div>
+
+  </div><!-- /#app-container -->
 
   <script src="app.js"></script>
 </body>
 </html>
+

@@ -235,44 +235,6 @@
         </div>
       </div>
 
-      <!-- Field Compass HUD (Activated during field walking) -->
-      <div id="compass-hud" class="compass-hud" style="display: none;">
-        <div class="compass-card">
-          <div class="compass-header">
-            <div class="compass-target-title">
-              <span class="target-label">NAVIGATING TO</span>
-              <strong id="hud-target-name">SD041 - Plot 11</strong>
-            </div>
-            <button id="btn-close-compass" class="hud-close-btn" title="Stop Navigation">&times;</button>
-          </div>
-
-          <div class="compass-body">
-            <div class="compass-dial">
-              <div class="dial-arrow" id="compass-arrow">
-                <svg viewBox="0 0 60 60" width="60" height="60">
-                  <polygon points="30 2, 45 42, 30 34, 15 42" fill="#E4A834" stroke="#B87D1B" stroke-width="2"/>
-                </svg>
-              </div>
-            </div>
-
-            <div class="compass-metrics">
-              <div class="metric-block">
-                <span class="metric-label">DISTANCE</span>
-                <span class="metric-value" id="hud-distance">-- m</span>
-              </div>
-              <div class="metric-block">
-                <span class="metric-label">BEARING</span>
-                <span class="metric-value" id="hud-bearing">--°</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="compass-footer">
-            <span id="hud-gps-accuracy" class="gps-accuracy-text">GPS: Waiting for fix...</span>
-          </div>
-        </div>
-      </div>
-
       <!-- Bottom / Left Plot Details & Directions Sheet -->
       <section id="plot-drawer" class="plot-drawer closed">
       <div class="drawer-handle" id="drawer-toggle">
@@ -809,17 +771,6 @@
                   </div>
                 </div>
               </div>
-            </div>
-
-            <!-- Navigation & Actions -->
-            <div class="plot-actions">
-              <button id="btn-start-compass" class="action-btn walk-btn">
-                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
-                  <circle cx="12" cy="12" r="10"></circle>
-                  <polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76" fill="currentColor"></polygon>
-                </svg>
-                <span>Field Compass (Walk Bunds)</span>
-              </button>
             </div>
 
             <!-- Stepper Nav Bar -->

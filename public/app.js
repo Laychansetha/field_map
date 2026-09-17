@@ -1,7 +1,7 @@
 /**
  * IBIS RICE PLOT NAVIGATOR - FIELD PWA APPLICATION
  * Supports offline search, plot selection, driving directions,
- * live GPS compass navigation, and interactive subplot sketching for field inspections.
+ * and interactive subplot sketching for field inspections.
  */
 
 (function () {
@@ -24,11 +24,6 @@
   let userLocation = null; // { lat, lng, accuracy, heading }
   let userMarker = null;
   let userAccuracyCircle = null;
-  let navGuideLine = null;
-
-  let isWalkingMode = false;
-  let watchPositionId = null;
-  let deviceHeading = null; // phone magnetic compass heading
 
   // --- Subplot Inspection State ---
   const SUBPLOTS_STORAGE_KEY = 'ibis_inspection_subplots_v1';
@@ -73,14 +68,6 @@
   const layerLabel = document.getElementById('layer-label');
   const btnFitPlots = document.getElementById('btn-fit-plots');
 
-  const compassHud = document.getElementById('compass-hud');
-  const hudTargetName = document.getElementById('hud-target-name');
-  const hudDistance = document.getElementById('hud-distance');
-  const hudBearing = document.getElementById('hud-bearing');
-  const compassArrow = document.getElementById('compass-arrow');
-  const hudGpsAccuracy = document.getElementById('hud-gps-accuracy');
-  const btnCloseCompass = document.getElementById('btn-close-compass');
-
   const plotDrawer = document.getElementById('plot-drawer');
   const drawerToggle = document.getElementById('drawer-toggle');
   const drawerEmptyState = document.getElementById('drawer-empty-state');
@@ -95,8 +82,6 @@
   const cardYear = document.getElementById('card-year');
   const cardCoords = document.getElementById('card-coords');
 
-  const btnDriveDirections = document.getElementById('btn-drive-directions');
-  const btnStartCompass = document.getElementById('btn-start-compass');
 
   // Subplot Elements
   const drawingHud = document.getElementById('drawing-hud');
@@ -157,7 +142,6 @@
     loadStoredSubplots();
     loadICSStores();
     initMap();
-    initOrientationListener();
     loadPlotData();
     bindEvents();
     initDrawerTabs();
@@ -710,11 +694,6 @@
 
     // Open drawer
     plotDrawer.classList.remove('closed');
-
-    // If walking compass is active, update target
-    if (isWalkingMode) {
-      updateCompassHUD();
-    }
   }
 
   // --- Subplot Separation & Labeling Workflow (Fullscreen Mode) ---
@@ -899,7 +878,6 @@
     isFullscreenDrawing = true;
     document.getElementById('top-bar').style.display = 'none';
     plotDrawer.classList.add('closed');
-    compassHud.style.display = 'none';
     document.getElementById('map-wrapper').style.flex = '1';
     document.getElementById('app-container').classList.add('drawing-fullscreen');
     document.getElementById('map').classList.add('drawing-active');
@@ -2032,13 +2010,6 @@
       });
     }
 
-    // Navigation buttons
-    if (btnDriveDirections) {
-      btnDriveDirections.addEventListener('click', launchDrivingDirections);
-    }
-    btnStartCompass.addEventListener('click', startWalkingCompassMode);
-    btnCloseCompass.addEventListener('click', stopWalkingCompassMode);
-
     // Subplot Drawing & Separation Controls
     btnStartDrawing.addEventListener('click', () => startSubplotDrawing(selectedPlot));
     btnModeDrawLine.addEventListener('click', () => setDrawingMode('line'));
@@ -2617,69 +2588,20 @@
     window.open(googleMapsUrl, '_blank');
   }
 
-  // --- Field Walking Compass Mode ---
-  function startWalkingCompassMode() {
-    if (!selectedPlot) {
-      showToast('Select a plot first to start walking navigation');
-      return;
-    }
-
-    isWalkingMode = true;
-    compassHud.style.display = 'block';
-    hudTargetName.textContent = `${selectedPlot.family_id} (Plot ${selectedPlot.plot_id}) · ${selectedPlot.village}`;
-
-    if ('geolocation' in navigator) {
-      hudGpsAccuracy.textContent = 'Acquiring GPS fix...';
-      watchPositionId = navigator.geolocation.watchPosition(
-        onGpsLocationUpdate,
-        onGpsLocationError,
-        {
-          enableHighAccuracy: true,
-          maximumAge: 2000,
-          timeout: 10000
-        }
-      );
-    } else {
-      hudGpsAccuracy.textContent = 'Geolocation not supported on this device';
-      showToast('Geolocation is not supported by your browser');
-    }
-
-    showToast('Field Compass Walk started');
-  }
-
-  function stopWalkingCompassMode() {
-    isWalkingMode = false;
-    compassHud.style.display = 'none';
-
-    if (watchPositionId !== null) {
-      navigator.geolocation.clearWatch(watchPositionId);
-      watchPositionId = null;
-    }
-
-    if (navGuideLine) {
-      map.removeLayer(navGuideLine);
-      navGuideLine = null;
-    }
-
-    showToast('Walking navigation stopped');
-  }
-
+  // --- GPS Location Updates ---
   function onGpsLocationUpdate(pos) {
     const crd = pos.coords;
     userLocation = {
       lat: crd.latitude,
       lng: crd.longitude,
-      accuracy: crd.accuracy,
-      heading: crd.heading
+      accuracy: crd.accuracy
     };
 
     updateUserMarkerOnMap();
-    updateCompassHUD();
   }
 
   function onGpsLocationError(err) {
     console.warn('[GPS] Error:', err);
-    hudGpsAccuracy.textContent = `GPS error: ${err.message}`;
   }
 
   function updateUserMarkerOnMap() {
@@ -2729,93 +2651,7 @@
     );
   }
 
-  function updateCompassHUD() {
-    if (!selectedPlot || !userLocation) return;
-
-    const uLat = userLocation.lat;
-    const uLng = userLocation.lng;
-    const tLat = selectedPlot.lat;
-    const tLng = selectedPlot.lng;
-
-    const distMeters = calculateHaversineDistance(uLat, uLng, tLat, tLng);
-    const bearingDeg = calculateBearing(uLat, uLng, tLat, tLng);
-
-    if (distMeters >= 1000) {
-      hudDistance.textContent = `${(distMeters / 1000).toFixed(2)} km`;
-    } else {
-      hudDistance.textContent = `${Math.round(distMeters)} m`;
-    }
-
-    const cardinal = getCardinalDirection(bearingDeg);
-    hudBearing.textContent = `${Math.round(bearingDeg)}° ${cardinal}`;
-    hudGpsAccuracy.textContent = `GPS Accuracy: ±${Math.round(userLocation.accuracy)}m`;
-
-    const effectiveAngle = deviceHeading !== null ? bearingDeg - deviceHeading : bearingDeg;
-    compassArrow.style.transform = `rotate(${effectiveAngle}deg)`;
-
-    if (distMeters <= 25) {
-      hudDistance.style.color = '#22c55e';
-      showToast('🎯 You have arrived at the plot!');
-    } else {
-      hudDistance.style.color = '#ffffff';
-    }
-
-    if (!navGuideLine) {
-      navGuideLine = L.polyline([[uLat, uLng], [tLat, tLng]], {
-        color: '#E4A834',
-        weight: 3,
-        dashArray: '6, 8',
-        opacity: 0.9
-      }).addTo(map);
-    } else {
-      navGuideLine.setLatLngs([[uLat, uLng], [tLat, tLng]]);
-    }
-  }
-
-  function initOrientationListener() {
-    if (window.DeviceOrientationEvent) {
-      window.addEventListener('deviceorientation', (event) => {
-        if (event.webkitCompassHeading) {
-          deviceHeading = event.webkitCompassHeading;
-        } else if (event.alpha !== null) {
-          deviceHeading = 360 - event.alpha;
-        }
-        if (isWalkingMode) {
-          updateCompassHUD();
-        }
-      }, true);
-    }
-  }
-
   // --- Geometry & Math Utilities ---
-  function calculateHaversineDistance(lat1, lon1, lat2, lon2) {
-    const R = 6371000;
-    const dLat = (lat2 - lat1) * Math.PI / 180;
-    const dLon = (lon2 - lon1) * Math.PI / 180;
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-      Math.sin(dLon / 2) * Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return R * c;
-  }
-
-  function calculateBearing(lat1, lon1, lat2, lon2) {
-    const phi1 = lat1 * Math.PI / 180;
-    const phi2 = lat2 * Math.PI / 180;
-    const deltaLambda = (lon2 - lon1) * Math.PI / 180;
-
-    const y = Math.sin(deltaLambda) * Math.cos(phi2);
-    const x = Math.cos(phi1) * Math.sin(phi2) -
-              Math.sin(phi1) * Math.cos(phi2) * Math.cos(deltaLambda);
-    const theta = Math.atan2(y, x);
-    return (theta * 180 / Math.PI + 360) % 360;
-  }
-
-  function getCardinalDirection(angle) {
-    const directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW', 'N'];
-    return directions[Math.round(angle / 45) % 8];
-  }
 
   function calculatePolygonAreaM2(points) {
     if (!points || points.length < 3) return 0;

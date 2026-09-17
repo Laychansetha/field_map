@@ -2845,6 +2845,10 @@
     document.querySelectorAll('.drawer-tab-panel').forEach((p) => {
       p.classList.toggle('active', p.id === tabId);
     });
+    const scrollBody = document.getElementById('drawer-scrollable-body');
+    if (scrollBody) {
+      scrollBody.scrollTop = 0;
+    }
   }
 
   // --- Digital Signature Pad ---

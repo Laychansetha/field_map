@@ -130,6 +130,13 @@
   const subplotCustomVariety = document.getElementById('subplot-custom-variety');
   const subplotNotes = document.getElementById('subplot-notes');
 
+  // Subplot Harvest Modal Elements
+  const subplotHarvestModal = document.getElementById('subplot-harvest-modal');
+  const subplotHarvestForm = document.getElementById('subplot-harvest-form');
+  const btnCloseHarvestModal = document.getElementById('btn-close-harvest-modal');
+  const btnCancelHarvestModal = document.getElementById('btn-cancel-harvest-modal');
+  let editingHarvestSubplot = null;
+
   // Allocation tracker elements
   const btnClosePlotDrawer = document.getElementById('btn-close-plot-drawer');
   const drawerAllocTracker = document.getElementById('drawer-alloc-tracker');
@@ -1645,6 +1652,7 @@
           No subplots sketched yet. Tap <b>"+ Draw Subplot"</b> to sketch rice variety parcels for Plot ${escapeHtml(selectedPlot.plot_id)}.
         </div>
       `;
+      updateParcelHarvestSummary();
       return;
     }
 
@@ -1696,8 +1704,8 @@
           </div>
         </div>
         <div class="subplot-card-actions">
-          <button class="sp-inspect-btn" title="Record subplot inspection" data-sp-id="${escapeHtml(sp.id)}">Inspect</button>
-          <button class="sp-harvest-btn" title="Record harvest" data-sp-id="${escapeHtml(sp.id)}">Harvest</button>
+          <button class="sp-inspect-btn" title="Record subplot inspection details" data-sp-id="${escapeHtml(sp.id)}">Details</button>
+          <button class="sp-harvest-btn" title="Record harvest for this subplot" data-sp-id="${escapeHtml(sp.id)}">🌾 Harvest</button>
           <button class="subplot-action-btn delete-btn" title="Delete this subplot" aria-label="Delete subplot">
             <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="3 6 5 6 21 6"></polyline>
@@ -1723,7 +1731,7 @@
       // Harvest button
       card.querySelector('.sp-harvest-btn').addEventListener('click', (e) => {
         e.stopPropagation();
-        openHarvestModal(sp);
+        openSubplotHarvestModal(sp);
       });
 
       // Delete subplot
@@ -1739,6 +1747,7 @@
     });
 
     subplotsList.appendChild(frag);
+    updateParcelHarvestSummary();
   }
 
   function deleteSubplot(subplotId) {
@@ -1945,6 +1954,55 @@
       subplotModal.style.display = 'none';
       editingSubplotInstance = null;
     });
+
+    // Subplot Harvest Modal Form
+    if (subplotHarvestForm) subplotHarvestForm.addEventListener('submit', onSubplotHarvestSubmit);
+    if (btnCloseHarvestModal) {
+      btnCloseHarvestModal.addEventListener('click', () => {
+        subplotHarvestModal.style.display = 'none';
+        editingHarvestSubplot = null;
+      });
+    }
+    if (btnCancelHarvestModal) {
+      btnCancelHarvestModal.addEventListener('click', () => {
+        subplotHarvestModal.style.display = 'none';
+        editingHarvestSubplot = null;
+      });
+    }
+
+    // Two-way triggers for subplot harvest form
+    ['sh-actual-kg', 'sh-sale-kg', 'sh-consume-kg', 'sh-seed-kg'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('input', updateSubplotHarvestBalance);
+    });
+
+    const selShComplete = document.getElementById('sh-complete');
+    if (selShComplete) {
+      selShComplete.addEventListener('change', () => {
+        const isDone = selShComplete.value === '1';
+        const blkInc = document.getElementById('sh-incomplete-block');
+        const blkComp = document.getElementById('sh-complete-block');
+        if (blkInc) blkInc.style.display = isDone ? 'none' : 'block';
+        if (blkComp) blkComp.style.display = isDone ? 'block' : 'none';
+      });
+    }
+
+    const selShMethod = document.getElementById('sh-method');
+    if (selShMethod) {
+      selShMethod.addEventListener('change', () => {
+        const isMachine = selShMethod.value === '2' || selShMethod.value === '3';
+        const blkMachine = document.getElementById('sh-machine-block');
+        if (blkMachine) blkMachine.style.display = isMachine ? 'flex' : 'none';
+      });
+    }
+
+    const selShPay = document.getElementById('sh-payment-type');
+    const lblShPay = document.getElementById('sh-payment-label');
+    if (selShPay && lblShPay) {
+      selShPay.addEventListener('change', () => {
+        lblShPay.textContent = selShPay.value === '2' ? 'Payment Amount in Paddy (kg)' : 'Payment Amount in Riel (KHR)';
+      });
+    }
 
     // Two-way synchronization between Subplot % and Area (ha)
     subplotAreaPct.addEventListener('input', () => {
@@ -2808,9 +2866,9 @@
       btnBackParcel.addEventListener('click', () => switchDrawerTab('tab-parcel'));
     }
 
-    const btnNextHarvest = document.getElementById('btn-next-to-harvest');
-    if (btnNextHarvest) {
-      btnNextHarvest.addEventListener('click', () => switchDrawerTab('tab-harvest'));
+    const btnNextPostharvest = document.getElementById('btn-next-to-postharvest');
+    if (btnNextPostharvest) {
+      btnNextPostharvest.addEventListener('click', () => switchDrawerTab('tab-postharvest'));
     }
 
     const btnBackSubplots = document.getElementById('btn-back-to-subplots');
@@ -2821,14 +2879,14 @@
     const btnNextConfirm = document.getElementById('btn-next-to-confirm');
     if (btnNextConfirm) {
       btnNextConfirm.addEventListener('click', () => {
-        saveCurrentHarvestForm();
+        saveCurrentPostHarvestForm();
         switchDrawerTab('tab-confirm');
       });
     }
 
-    const btnBackHarvest = document.getElementById('btn-back-to-harvest');
-    if (btnBackHarvest) {
-      btnBackHarvest.addEventListener('click', () => switchDrawerTab('tab-harvest'));
+    const btnBackPostharvest = document.getElementById('btn-back-to-postharvest');
+    if (btnBackPostharvest) {
+      btnBackPostharvest.addEventListener('click', () => switchDrawerTab('tab-postharvest'));
     }
 
     const btnSaveAll = document.getElementById('btn-save-complete-inspection');
@@ -3104,21 +3162,25 @@
   }
 
   function updateHarvestMassBalance() {
-    const actual = parseFloat(document.getElementById('h-actual-kg')?.value) || 0;
-    const sale = parseFloat(document.getElementById('h-sale-kg')?.value) || 0;
-    const consume = parseFloat(document.getElementById('h-consume-kg')?.value) || 0;
-    const seed = parseFloat(document.getElementById('h-seed-kg')?.value) || 0;
+    updateSubplotHarvestBalance();
+  }
+
+  function updateSubplotHarvestBalance() {
+    const actual = parseFloat(document.getElementById('sh-actual-kg')?.value) || 0;
+    const sale = parseFloat(document.getElementById('sh-sale-kg')?.value) || 0;
+    const consume = parseFloat(document.getElementById('sh-consume-kg')?.value) || 0;
+    const seed = parseFloat(document.getElementById('sh-seed-kg')?.value) || 0;
     const allocated = sale + consume + seed;
     const balance = actual - allocated;
 
-    const elSum = document.getElementById('h-alloc-sum');
-    const elBal = document.getElementById('h-alloc-balance');
-    const rowBal = document.getElementById('h-balance-row');
+    const elSum = document.getElementById('sh-alloc-sum');
+    const elBal = document.getElementById('sh-alloc-balance');
+    const rowBal = document.getElementById('sh-balance-row');
 
     if (elSum) elSum.textContent = `${allocated.toLocaleString()} kg`;
     if (elBal) elBal.textContent = `${balance.toLocaleString()} kg`;
     if (rowBal) {
-      if (actual > 0 && Math.abs(balance) < 1) {
+      if (actual > 0 && Math.abs(balance) < 0.1) {
         rowBal.className = 'disposition-total-row balanced';
       } else if (balance < 0) {
         rowBal.className = 'disposition-total-row over-budget';
@@ -3128,20 +3190,106 @@
     }
   }
 
-  // --- Load Inspection for Selected Plot ---
+  function updateParcelHarvestSummary() {
+    const summaryBox = document.getElementById('parcel-harvest-summary');
+    if (!selectedPlot || !summaryBox) return;
+
+    const plotSubplots = subplots.filter((s) => s.parent_plot_id === selectedPlot.id);
+    if (plotSubplots.length === 0) {
+      summaryBox.style.display = 'none';
+      return;
+    }
+
+    let totalExp = 0;
+    let totalAct = 0;
+    let totalSale = 0;
+    let totalHome = 0;
+    let totalSeed = 0;
+
+    plotSubplots.forEach((sp) => {
+      totalExp += parseFloat(sp.expected_production_kg) || 0;
+      if (sp.harvest && sp.harvest.complete === '1') {
+        totalAct += parseFloat(sp.harvest.actual_kg) || 0;
+        totalSale += parseFloat(sp.harvest.sale_kg) || 0;
+        totalHome += parseFloat(sp.harvest.consume_kg) || 0;
+        totalSeed += parseFloat(sp.harvest.seed_kg) || 0;
+      }
+    });
+
+    const setT = (id, val) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = `${val.toLocaleString()} kg`;
+    };
+
+    setT('summary-total-exp', totalExp);
+    setT('summary-total-act', totalAct);
+    setT('summary-total-sale', totalSale);
+    setT('summary-total-home', totalHome);
+    setT('summary-total-seed', totalSeed);
+
+    summaryBox.style.display = 'block';
+  }
+
+  // --- Load Inspection for Selected Plot (Strict Hierarchy) ---
   function loadICSInspectionForSelectedPlot() {
     if (!selectedPlot) return;
     const plotDbId = selectedPlot.id;
     const familyId = selectedPlot.family_id;
 
-    // Header labels
+    // Header labels & Hierarchy Banners
     const dispFamily = document.getElementById('f-family-display');
     if (dispFamily) dispFamily.textContent = `Family ${familyId}`;
     const dispPlot = document.getElementById('p-plot-display');
     if (dispPlot) dispPlot.textContent = `Plot ${selectedPlot.plot_id} · ${selectedPlot.village || ''}`;
 
-    // 1. Farmer Baseline
+    const setBannerText = (id, txt) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = txt;
+    };
+    setBannerText('banner-family-id', familyId);
+    setBannerText('banner-plot-id', selectedPlot.plot_id);
+    setBannerText('banner-subplots-plot', selectedPlot.plot_id);
+    setBannerText('banner-postharvest-family', familyId);
+    setBannerText('banner-confirm-family', familyId);
+
+    // Registered Parcels Switcher for this Farmer
+    const familyParcelsBox = document.getElementById('family-parcels-container');
+    const familyParcelsList = document.getElementById('family-parcels-list');
+    const familyParcelsCount = document.getElementById('family-parcels-count');
+
+    if (familyParcelsBox && familyParcelsList) {
+      const familyPlots = allFeatures.filter(
+        (ft) => ft.properties && ft.properties.family_id === familyId
+      );
+      if (familyPlots.length > 1) {
+        familyParcelsBox.style.display = 'block';
+        if (familyParcelsCount) familyParcelsCount.textContent = familyPlots.length.toString();
+        familyParcelsList.innerHTML = '';
+        familyPlots.forEach((ft) => {
+          const pProps = ft.properties;
+          const chip = document.createElement('button');
+          chip.type = 'button';
+          chip.className = 'family-parcel-chip' + (pProps.id === selectedPlot.id ? ' active-parcel' : '');
+          chip.innerHTML = `Plot ${escapeHtml(pProps.plot_id)} <span style="font-weight: normal; opacity: 0.8;">(${pProps.area_ha ? pProps.area_ha.toFixed(2) : '--'} ha)</span>`;
+          chip.addEventListener('click', (e) => {
+            e.stopPropagation();
+            selectPlot(pProps, true);
+          });
+          familyParcelsList.appendChild(chip);
+        });
+      } else {
+        familyParcelsBox.style.display = 'none';
+      }
+    }
+
+    // 1. Stage 1: Farmer Baseline (Recorded once per farmer)
     const farmer = farmersStore[familyId] || {};
+    setVal('f-compliant', farmer.farmer_compliant || '1');
+    setChipValues('#f-nc-types', farmer.nc_types || []);
+    setVal('f-nc-remark', farmer.nc_remark || '');
+    setVal('f-nc-date', farmer.nc_date || '');
+    setVal('f-nc-status', farmer.nc_status || 'Organic');
+
     setVal('f-head-name', farmer.hoh_name || selectedPlot.farmer_name || '');
     setVal('f-gender', farmer.hoh_sex || (selectedPlot.sex === 'F' ? '2' : '1'));
     setVal('f-is-head-interviewee', farmer.is_head_interviewee || '1');
@@ -3162,15 +3310,8 @@
     setChipValues('#f-trainings', farmer.trainings || ['1']);
     setChipValues('#f-records', farmer.records || ['map', 'book']);
 
-    // 2. Plot Inspection
+    // 2. Stage 2: Parcel Baseline (Specific to this physical parcel)
     const insp = icsInspections[plotDbId] || {};
-    setVal('f-compliant', insp.farmer_compliant || '1');
-    setChipValues('#f-nc-types', insp.nc_types || []);
-    setVal('f-nc-remark', insp.nc_remark || '');
-    setVal('f-nc-date', insp.nc_date || '');
-    setVal('f-nc-status', insp.nc_status || 'Organic');
-
-    // Stage 2: Parcel Baseline
     setVal('p-inspection-date', insp.inspection_date || new Date().toISOString().slice(0, 10));
     setVal('p-area-ha', insp.area_ha || (selectedPlot.area_ha ? selectedPlot.area_ha.toFixed(2) : '1.00'));
     setVal('p-land-situation', insp.land_situation || '1');
@@ -3190,44 +3331,30 @@
     setVal('p-seed-kept', insp.seed_kept || '');
     setVal('p-consumed', insp.consumed || '');
 
-    // Stage 4: Harvest & Threshing
-    setVal('h-complete', insp.harvest_complete || '1');
-    setVal('h-reason-no', insp.harvest_reason_no || 'Not mature');
-    setVal('h-date', insp.harvest_date || '');
-    setVal('h-method', insp.harvest_method || '3');
-    setVal('h-owner', insp.machine_owner || '');
-    setVal('h-flush', insp.flush_qty || '0');
-    setVal('h-dry-loc', insp.dry_loc || '1');
-    setVal('h-diff-plots', insp.diff_plots || '1');
-    setVal('h-actual-kg', insp.actual_kg || '');
-    setVal('h-sale-kg', insp.sale_kg || '');
-    setVal('h-consume-kg', insp.consume_kg || '');
-    setVal('h-seed-kg', insp.seed_kg || '');
-    setVal('h-payment-type', insp.payment_type || '1');
-    setVal('h-payment-amount', insp.payment_amount || '');
+    // 3. Stage 4: Post-Harvest Inspection (Farmer level, off-season)
+    const postHarvest = farmer.post_harvest || {};
+    setVal('c-have-chamkar', postHarvest.have_chamkar || '2');
+    setVal('c-chamkar-num', postHarvest.chamkar_num || 1);
+    setVal('c-chamkar-area', postHarvest.chamkar_area || '');
+    setChipValues('#c-chamkar-crops', postHarvest.chamkar_crops || []);
+    setVal('c-rice-barn', postHarvest.has_rice_barn || '1');
+    setVal('c-chambers', postHarvest.barn_chambers || 1);
+    setVal('c-barn-clean', postHarvest.barn_clean || '1');
+    setVal('c-barn-chemicals', postHarvest.barn_free_chemicals || '1');
+    setVal('c-clear-forest', postHarvest.cleared_forest || '2');
+    setVal('c-expand-land', postHarvest.expanded_land || '2');
+    setVal('c-burn-straw', postHarvest.burned_straw || '2');
+    setVal('c-firebreak', postHarvest.firebreak_kept || '1');
 
-    // Stage 5: Chamkar, Barn & Confirmations
-    setVal('c-have-chamkar', insp.have_chamkar || '2');
-    setVal('c-chamkar-num', insp.chamkar_num || 1);
-    setVal('c-chamkar-area', insp.chamkar_area || '');
-    setChipValues('#c-chamkar-crops', insp.chamkar_crops || []);
-    setVal('c-rice-barn', insp.has_rice_barn || '1');
-    setVal('c-chambers', insp.barn_chambers || 1);
-    setVal('c-barn-clean', insp.barn_clean || '1');
-    setVal('c-barn-chemicals', insp.barn_free_chemicals || '1');
-    setVal('c-clear-forest', insp.cleared_forest || '2');
-    setVal('c-expand-land', insp.expanded_land || '2');
-    setVal('c-burn-straw', insp.burned_straw || '2');
-    setVal('c-firebreak', insp.firebreak_kept || '1');
-    setVal('c-certified-status', insp.certified_status || '1');
-    setVal('c-conclusion-notes', insp.conclusion_notes || '');
-    setVal('c-inspector-name', insp.inspector_name || sessionState.inspectorName || '');
-    setVal('c-irpg-name', insp.irpg_name || '');
+    // 4. Stage 5: Confirmation (Farmer level complete sign-off)
+    const confirmData = farmer.confirmation || {};
+    setVal('c-certified-status', confirmData.certified_status || '1');
+    setVal('c-conclusion-notes', confirmData.conclusion_notes || '');
+    setVal('c-inspector-name', confirmData.inspector_name || sessionState.inspectorName || '');
+    setVal('c-irpg-name', confirmData.irpg_name || '');
+    loadSignatureFromDataUrl(confirmData.signature_data || '');
 
-    // Signature
-    loadSignatureFromDataUrl(insp.signature_data || '');
-
-    // Refresh conditional blocks
+    // Refresh conditional triggers
     const trigger = (elId) => {
       const el = document.getElementById(elId);
       if (el) el.dispatchEvent(new Event('change'));
@@ -3237,12 +3364,10 @@
     trigger('p-contamination');
     trigger('p-last-prohibited');
     trigger('p-other-crop');
-    trigger('h-complete');
-    trigger('h-method');
-    trigger('h-payment-type');
     trigger('c-have-chamkar');
     trigger('c-rice-barn');
-    updateHarvestMassBalance();
+
+    updateParcelHarvestSummary();
   }
 
   function setVal(id, val) {
@@ -3264,12 +3389,21 @@
     return Array.from(container.querySelectorAll('input[type="checkbox"]:checked')).map((cb) => cb.value);
   }
 
-  // --- Form Auto-Save Handlers ---
+  // --- Form Auto-Save Handlers (Strict Hierarchy) ---
   function saveCurrentFarmerForm() {
     if (!selectedPlot) return;
     const fid = selectedPlot.family_id;
+    const existing = farmersStore[fid] || {};
     farmersStore[fid] = {
+      ...existing,
       family_id: fid,
+      // Compliance
+      farmer_compliant: document.getElementById('f-compliant')?.value || '1',
+      nc_types: getChipValues('#f-nc-types'),
+      nc_remark: document.getElementById('f-nc-remark')?.value.trim() || '',
+      nc_date: document.getElementById('f-nc-date')?.value || '',
+      nc_status: document.getElementById('f-nc-status')?.value || 'Organic',
+      // Demographics & profile
       hoh_name: document.getElementById('f-head-name')?.value.trim() || '',
       hoh_sex: document.getElementById('f-gender')?.value || '1',
       is_head_interviewee: document.getElementById('f-is-head-interviewee')?.value || '1',
@@ -3324,56 +3458,11 @@
     saveICSStores();
   }
 
-  function saveCurrentHarvestForm() {
+  function saveCurrentPostHarvestForm() {
     if (!selectedPlot) return;
-    const key = selectedPlot.id;
-    const existing = icsInspections[key] || {};
-    icsInspections[key] = {
-      ...existing,
-      harvest_complete: document.getElementById('h-complete')?.value || '1',
-      harvest_reason_no: document.getElementById('h-reason-no')?.value || '',
-      harvest_date: document.getElementById('h-date')?.value || '',
-      harvest_method: document.getElementById('h-method')?.value || '3',
-      machine_owner: document.getElementById('h-owner')?.value.trim() || '',
-      flush_qty: parseFloat(document.getElementById('h-flush')?.value) || 0,
-      dry_loc: document.getElementById('h-dry-loc')?.value || '1',
-      diff_plots: document.getElementById('h-diff-plots')?.value || '1',
-      actual_kg: parseFloat(document.getElementById('h-actual-kg')?.value) || 0,
-      sale_kg: parseFloat(document.getElementById('h-sale-kg')?.value) || 0,
-      consume_kg: parseFloat(document.getElementById('h-consume-kg')?.value) || 0,
-      seed_kg: parseFloat(document.getElementById('h-seed-kg')?.value) || 0,
-      payment_type: document.getElementById('h-payment-type')?.value || '1',
-      payment_amount: parseFloat(document.getElementById('h-payment-amount')?.value) || 0,
-      updated_at: new Date().toISOString()
-    };
-    saveICSStores();
-  }
-
-  function saveCompleteRecord() {
-    if (!selectedPlot) {
-      showToast('⚠️ Please select a plot on the map first');
-      return;
-    }
-
-    saveCurrentFarmerForm();
-    saveCurrentPlotBaselineForm();
-    saveCurrentHarvestForm();
-
-    const key = selectedPlot.id;
-    const inspector = document.getElementById('c-inspector-name')?.value.trim() || '';
-    if (inspector) {
-      sessionState.inspectorName = inspector;
-    }
-
-    const sigData = getSignatureDataUrl();
-
-    icsInspections[key] = {
-      ...icsInspections[key],
-      farmer_compliant: document.getElementById('f-compliant')?.value || '1',
-      nc_types: getChipValues('#f-nc-types'),
-      nc_remark: document.getElementById('f-nc-remark')?.value.trim() || '',
-      nc_date: document.getElementById('f-nc-date')?.value || '',
-      nc_status: document.getElementById('f-nc-status')?.value || 'Organic',
+    const fid = selectedPlot.family_id;
+    if (!farmersStore[fid]) farmersStore[fid] = { family_id: fid };
+    farmersStore[fid].post_harvest = {
       have_chamkar: document.getElementById('c-have-chamkar')?.value || '2',
       chamkar_num: parseInt(document.getElementById('c-chamkar-num')?.value, 10) || 1,
       chamkar_area: parseFloat(document.getElementById('c-chamkar-area')?.value) || 0,
@@ -3386,6 +3475,19 @@
       expanded_land: document.getElementById('c-expand-land')?.value || '2',
       burned_straw: document.getElementById('c-burn-straw')?.value || '2',
       firebreak_kept: document.getElementById('c-firebreak')?.value || '1',
+      updated_at: new Date().toISOString()
+    };
+    saveICSStores();
+  }
+
+  function saveCurrentConfirmationForm() {
+    if (!selectedPlot) return;
+    const fid = selectedPlot.family_id;
+    if (!farmersStore[fid]) farmersStore[fid] = { family_id: fid };
+    const inspector = document.getElementById('c-inspector-name')?.value.trim() || '';
+    if (inspector) sessionState.inspectorName = inspector;
+    const sigData = getSignatureDataUrl();
+    farmersStore[fid].confirmation = {
       certified_status: document.getElementById('c-certified-status')?.value || '1',
       conclusion_notes: document.getElementById('c-conclusion-notes')?.value.trim() || '',
       inspector_name: inspector,
@@ -3394,10 +3496,22 @@
       is_completed: true,
       completed_at: new Date().toISOString()
     };
-
     saveICSStores();
+  }
+
+  function saveCompleteRecord() {
+    if (!selectedPlot) {
+      showToast('⚠️ Please select a plot on the map first');
+      return;
+    }
+
+    saveCurrentFarmerForm();
+    saveCurrentPlotBaselineForm();
+    saveCurrentPostHarvestForm();
+    saveCurrentConfirmationForm();
+
     renderSubplotsListForSelectedPlot();
-    showToast(`✅ Saved complete ICS 2026 record for Plot ${selectedPlot.plot_id}`);
+    showToast(`✅ Saved complete inspection record for Family ${selectedPlot.family_id} (Plot ${selectedPlot.plot_id})`);
   }
 
   // --- Subplot Card Actions & Inspection Modal ---
@@ -3461,14 +3575,88 @@
     subplotModal.style.display = 'flex';
   }
 
-  function openHarvestModal(sp) {
-    switchDrawerTab('tab-harvest');
-    const hActual = document.getElementById('h-actual-kg');
-    if (hActual) {
-      hActual.focus();
-      hActual.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  // --- Dedicated Subplot Harvest Modal (1 Harvest Record per Subplot) ---
+  function openSubplotHarvestModal(sp) {
+    editingHarvestSubplot = sp;
+    const plotNum = sp.parent_plot_num || (selectedPlot ? selectedPlot.plot_id : '--');
+    const famId = sp.parent_family_id || (selectedPlot ? selectedPlot.family_id : '--');
+
+    document.getElementById('harvest-modal-plot-ref').textContent = `Family ${famId} · Plot ${plotNum} · Subplot ${sp.code}`;
+    document.getElementById('harvest-modal-title').textContent = `🌾 Harvest: ${sp.code}`;
+    document.getElementById('harvest-meta-variety').textContent = sp.variety || 'Rice';
+    document.getElementById('harvest-meta-area').textContent = `${sp.area_ha} ha`;
+    document.getElementById('harvest-meta-pct').textContent = `${sp.pct_of_parent || 0}%`;
+    document.getElementById('harvest-meta-exp').textContent = sp.expected_production_kg ? `${parseFloat(sp.expected_production_kg).toLocaleString()} kg` : '-- kg';
+
+    const h = sp.harvest || {};
+    setVal('sh-complete', h.complete || '1');
+    setVal('sh-reason-no', h.reason_no || 'Not mature');
+    setVal('sh-date', h.date || '');
+    setVal('sh-method', h.method || '3');
+    setVal('sh-owner', h.owner || '');
+    setVal('sh-flush', h.flush_qty !== undefined ? h.flush_qty : 0);
+    setVal('sh-dry-loc', h.dry_loc || '1');
+    setVal('sh-payment-type', h.payment_type || '1');
+    setVal('sh-payment-amount', h.payment_amount || '');
+    setVal('sh-actual-kg', h.actual_kg || '');
+    setVal('sh-sale-kg', h.sale_kg || '');
+    setVal('sh-consume-kg', h.consume_kg || '');
+    setVal('sh-seed-kg', h.seed_kg || '');
+
+    // Trigger state changes
+    const isDone = (h.complete || '1') === '1';
+    const blkInc = document.getElementById('sh-incomplete-block');
+    const blkComp = document.getElementById('sh-complete-block');
+    if (blkInc) blkInc.style.display = isDone ? 'none' : 'block';
+    if (blkComp) blkComp.style.display = isDone ? 'block' : 'none';
+
+    const isMachine = (h.method || '3') === '2' || (h.method || '3') === '3';
+    const blkMachine = document.getElementById('sh-machine-block');
+    if (blkMachine) blkMachine.style.display = isMachine ? 'flex' : 'none';
+
+    updateSubplotHarvestBalance();
+    subplotHarvestModal.style.display = 'flex';
+  }
+
+  function onSubplotHarvestSubmit(e) {
+    e.preventDefault();
+    if (!editingHarvestSubplot) return;
+
+    const complete = document.getElementById('sh-complete')?.value || '1';
+    const actual = parseFloat(document.getElementById('sh-actual-kg')?.value) || 0;
+    const sale = parseFloat(document.getElementById('sh-sale-kg')?.value) || 0;
+    const consume = parseFloat(document.getElementById('sh-consume-kg')?.value) || 0;
+    const seed = parseFloat(document.getElementById('sh-seed-kg')?.value) || 0;
+
+    editingHarvestSubplot.harvest = {
+      complete: complete,
+      reason_no: document.getElementById('sh-reason-no')?.value || '',
+      date: document.getElementById('sh-date')?.value || '',
+      method: document.getElementById('sh-method')?.value || '3',
+      owner: document.getElementById('sh-owner')?.value.trim() || '',
+      flush_qty: parseFloat(document.getElementById('sh-flush')?.value) || 0,
+      dry_loc: document.getElementById('sh-dry-loc')?.value || '1',
+      payment_type: document.getElementById('sh-payment-type')?.value || '1',
+      payment_amount: parseFloat(document.getElementById('sh-payment-amount')?.value) || 0,
+      actual_kg: actual,
+      sale_kg: sale,
+      consume_kg: consume,
+      seed_kg: seed,
+      recorded_at: new Date().toISOString()
+    };
+
+    // Update in subplots array
+    const idx = subplots.findIndex((s) => s.id === editingHarvestSubplot.id);
+    if (idx !== -1) {
+      subplots[idx] = editingHarvestSubplot;
     }
-    showToast(`🌾 Switched to Harvest & Threshing tab for ${sp.code}`);
+
+    saveStoredSubplots();
+    renderSubplotsListForSelectedPlot();
+    updateParcelHarvestSummary();
+    subplotHarvestModal.style.display = 'none';
+    showToast(`🌾 Saved harvest record for ${editingHarvestSubplot.code} (${actual.toLocaleString()} kg)`);
+    editingHarvestSubplot = null;
   }
 
   function buildSubplotCardBadges(sp) {
@@ -3476,14 +3664,17 @@
     if (sp.inspected || sp.seed_source || sp.fertilizer_applied) {
       badges += `<span class="insp-badge insp-badge-done">✓ Inspected</span>`;
     }
-    const insp = icsInspections[sp.parent_plot_id];
-    if (insp && insp.harvest_complete === '1' && insp.actual_kg > 0) {
-      badges += `<span class="insp-badge insp-badge-harvest">🌾 Harvested</span>`;
+    if (sp.harvest && sp.harvest.complete === '1' && sp.harvest.actual_kg > 0) {
+      badges += `<span class="insp-badge insp-badge-harvest">🌾 Harvest: ${sp.harvest.actual_kg.toLocaleString()} kg</span>`;
+    } else if (sp.harvest && sp.harvest.complete === '2') {
+      badges += `<span class="insp-badge insp-badge-pending">⏳ Threshing Pending</span>`;
+    } else {
+      badges += `<span class="insp-badge insp-badge-pending">⏳ Harvest Pending</span>`;
     }
     return badges;
   }
 
-  // --- Export ICS 2026 CSV (Flat View) ---
+  // --- Export ICS 2026 CSV (Hierarchy: Farmer -> Parcel -> Subplot -> Harvest) ---
   function exportICSCsv() {
     const rows = [];
     rows.push([
@@ -3498,7 +3689,7 @@
       'fert_applied', 'fert_types', 'fert_qty_kg', 'crop_protection_applied', 'protection_action',
       'expected_harvest_kg', 'expected_sale_kg',
       'thresh_complete', 'thresh_date', 'thresh_method', 'machine_contractor', 'organic_flush_kg',
-      'drying_location', 'separate_threshing', 'actual_harvest_kg', 'for_sale_kg', 'household_kg', 'seed_kept_kg',
+      'drying_location', 'actual_harvest_kg', 'for_sale_kg', 'household_kg', 'seed_kept_kg',
       'thresh_payment_mode', 'thresh_payment_amount',
       'has_chamkar', 'chamkar_num', 'chamkar_area_ha', 'chamkar_crops',
       'has_rice_barn', 'barn_chambers', 'barn_clean', 'barn_free_chemicals',
@@ -3512,6 +3703,9 @@
       const fid = sp.parent_family_id;
       const f = farmersStore[fid] || {};
       const insp = icsInspections[sp.parent_plot_id] || {};
+      const h = sp.harvest || {};
+      const ph = f.post_harvest || {};
+      const conf = f.confirmation || {};
       const plotMeta = allFeatures.find((ft) => ft.properties && ft.properties.id === sp.parent_plot_id);
       const commune = plotMeta ? (plotMeta.properties.commune || '') : '';
 
@@ -3520,7 +3714,7 @@
         csvQ(sp.parent_site), csvQ(sp.parent_village), csvQ(commune),
         csvQ(fid), csvQ(f.hoh_name || ''), csvQ(f.hoh_sex || '1'), csvQ(f.ethnicity || '1'),
         csvQ(f.is_head_interviewee || '1'), csvQ(f.interviewee_name || ''), csvQ(f.status || '1'),
-        csvQ(insp.farmer_compliant || '1'), f.members_count || 4, f.school_count || 2,
+        csvQ(f.farmer_compliant || '1'), f.members_count || 4, f.school_count || 2,
         csvQ(f.has_toilet || '1'), csvQ(f.has_disabled || '2'), f.cattle_count || 0, f.buffalo_count || 0,
         csvQ(sp.parent_plot_num), sp.parent_area_ha || '', csvQ(insp.land_situation || '1'), csvQ(insp.irrigation || '1'),
         csvQ(insp.contamination || '2'), csvQ(insp.avoid_method || ''),
@@ -3532,15 +3726,15 @@
         sp.fertilizer_applied ? 'Yes' : 'No', csvQ((sp.fertilizer_types || []).join('; ')), sp.fertilizer_qty || '',
         sp.crop_protection_applied ? 'Yes' : 'No', csvQ(sp.protection_action || ''),
         sp.expected_production_kg || '', sp.expected_sale_kg || '',
-        csvQ(insp.harvest_complete || '1'), csvQ(insp.harvest_date || ''), csvQ(insp.harvest_method || '3'),
-        csvQ(insp.machine_owner || ''), insp.flush_qty || 0, csvQ(insp.dry_loc || '1'), csvQ(insp.diff_plots || '1'),
-        insp.actual_kg || '', insp.sale_kg || '', insp.consume_kg || '', insp.seed_kg || '',
-        csvQ(insp.payment_type || '1'), insp.payment_amount || '',
-        csvQ(insp.have_chamkar || '2'), insp.chamkar_num || '', insp.chamkar_area || '', csvQ((insp.chamkar_crops || []).join('; ')),
-        csvQ(insp.has_rice_barn || '1'), insp.barn_chambers || '', csvQ(insp.barn_clean || '1'), csvQ(insp.barn_free_chemicals || '1'),
-        csvQ(insp.cleared_forest || '2'), csvQ(insp.expanded_land || '2'), csvQ(insp.burned_straw || '2'), csvQ(insp.firebreak_kept || '1'),
-        csvQ(insp.certified_status || '1'), csvQ(insp.inspector_name || sessionState.inspectorName), csvQ(insp.irpg_name || ''),
-        insp.signature_data ? 'Yes' : 'No',
+        csvQ(h.complete || '1'), csvQ(h.date || ''), csvQ(h.method || '3'),
+        csvQ(h.owner || ''), h.flush_qty || 0, csvQ(h.dry_loc || '1'),
+        h.actual_kg || '', h.sale_kg || '', h.consume_kg || '', h.seed_kg || '',
+        csvQ(h.payment_type || '1'), h.payment_amount || '',
+        csvQ(ph.have_chamkar || '2'), ph.chamkar_num || '', ph.chamkar_area || '', csvQ((ph.chamkar_crops || []).join('; ')),
+        csvQ(ph.has_rice_barn || '1'), ph.barn_chambers || '', csvQ(ph.barn_clean || '1'), csvQ(ph.barn_free_chemicals || '1'),
+        csvQ(ph.cleared_forest || '2'), csvQ(ph.expanded_land || '2'), csvQ(ph.burned_straw || '2'), csvQ(ph.firebreak_kept || '1'),
+        csvQ(conf.certified_status || '1'), csvQ(conf.inspector_name || sessionState.inspectorName), csvQ(conf.irpg_name || ''),
+        conf.signature_data ? 'Yes' : 'No',
         new Date().toISOString()
       ];
       rows.push(row.join(','));

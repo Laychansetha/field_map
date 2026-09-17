@@ -287,11 +287,11 @@
                 <span class="step-num">3</span>
                 <span class="step-title">Subplots</span>
               </button>
-              <button class="drawer-tab-btn" data-tab="tab-harvest" id="tab-btn-harvest" title="Stage 4: Harvest">
+              <button class="drawer-tab-btn" data-tab="tab-postharvest" id="tab-btn-postharvest" title="Stage 4: Post-Harvest Inspection">
                 <span class="step-num">4</span>
-                <span class="step-title">Harvest</span>
+                <span class="step-title">Post-Harvest</span>
               </button>
-              <button class="drawer-tab-btn" data-tab="tab-confirm" id="tab-btn-confirm" title="Stage 5: Confirm">
+              <button class="drawer-tab-btn" data-tab="tab-confirm" id="tab-btn-confirm" title="Stage 5: Confirmation">
                 <span class="step-num">5</span>
                 <span class="step-title">Confirm</span>
               </button>
@@ -304,8 +304,28 @@
                  STAGE 1: FARMER LEVEL (General & Compliance)
                  ===================================================== -->
             <div class="drawer-tab-panel active" id="tab-farmer">
-            <!-- Compliance Filter -->
-            <div class="insp-section-card">
+              <!-- Farmer Level Hierarchy Indicator Banner -->
+              <div class="level-indicator-banner farmer-banner">
+                <div class="banner-top-line">
+                  <span class="banner-pill farmer-pill">🧑‍🌾 1 FARMER RECORD</span>
+                  <span class="banner-scope">Shared across all parcels</span>
+                </div>
+                <div class="banner-main-title">Family <b id="banner-family-id">--</b> Profile &amp; Demographics</div>
+                <div class="banner-note">This farmer-level information is recorded once and automatically reused for every parcel.</div>
+              </div>
+
+              <!-- Registered Parcels Switcher for this Farmer -->
+              <div class="family-parcels-box" id="family-parcels-container" style="display: none;">
+                <div class="parcels-box-header">
+                  <span class="parcels-box-title">🗺️ Registered Parcels for this Farmer (<span id="family-parcels-count">0</span>):</span>
+                </div>
+                <div class="parcels-chip-list" id="family-parcels-list">
+                  <!-- Dynamically populated with parcels belonging to this farmer -->
+                </div>
+              </div>
+
+              <!-- Compliance Filter -->
+              <div class="insp-section-card">
               <div class="card-section-title">
                 <span>🌾 Compliance Quick Check</span>
                 <span class="badge status-pill" id="badge-farmer-compliance">Required</span>
@@ -513,6 +533,16 @@
                STAGE 2: PARCEL / PLOT LEVEL (Physical Land & History)
                ===================================================== -->
           <div class="drawer-tab-panel" id="tab-parcel">
+            <!-- Parcel Level Hierarchy Indicator Banner -->
+            <div class="level-indicator-banner parcel-banner">
+              <div class="banner-top-line">
+                <span class="banner-pill parcel-pill">🗺️ PARCEL RECORD</span>
+                <span class="banner-scope">Specific to this parcel</span>
+              </div>
+              <div class="banner-main-title">Plot <b id="banner-plot-id">--</b> Land Baseline &amp; Field Info</div>
+              <div class="banner-note">Each parcel has its own land tenure, GPS area, irrigation, and buffer conditions.</div>
+            </div>
+
             <div class="insp-section-card">
               <div class="card-section-title">
                 <span>🗺 Main Plot Land Baseline</span>
@@ -655,9 +685,19 @@
           </div>
 
           <!-- =====================================================
-               STAGE 3: SUBPLOTS LEVEL (Map Sketches & Badges)
+               STAGE 3: SUBPLOTS LEVEL (Map Sketches, Subplots & Harvest)
                ===================================================== -->
           <div class="drawer-tab-panel" id="tab-subplots">
+            <!-- Subplots Level Hierarchy Indicator Banner -->
+            <div class="level-indicator-banner subplots-banner">
+              <div class="banner-top-line">
+                <span class="banner-pill subplots-pill">🌿 SUBPLOTS &amp; HARVEST</span>
+                <span class="banner-scope">1 Harvest per Subplot</span>
+              </div>
+              <div class="banner-main-title">Plot <b id="banner-subplots-plot">--</b> Subplots &amp; Individual Harvest Records</div>
+              <div class="banner-note">Each sketched subplot tracks its own variety, area, organic inputs, and actual harvest/sales.</div>
+            </div>
+
             <div class="details-grid">
               <div class="detail-item">
                 <span class="detail-label">Village</span>
@@ -681,9 +721,9 @@
             <div class="subplots-section">
               <div class="subplots-header">
                 <div class="subplots-title-group">
-                  <span class="section-eyebrow">FIELD INSPECTION</span>
+                  <span class="section-eyebrow">FIELD SUBPLOTS</span>
                   <div class="title-with-count">
-                    <h3>Subplots</h3>
+                    <h3>Subplots &amp; Harvest</h3>
                     <span id="subplots-count-badge" class="badge subplots-badge">0</span>
                   </div>
                 </div>
@@ -707,7 +747,34 @@
               </div>
 
               <div id="subplots-list" class="subplots-list">
-                <!-- Dynamically populated -->
+                <!-- Dynamically populated with subplots + harvest status -->
+              </div>
+
+              <!-- Parcel Total Production Summary (Summed from all subplots) -->
+              <div id="parcel-harvest-summary" class="parcel-harvest-summary" style="display: none;">
+                <div class="summary-title">📊 Parcel Subplots Production Summary</div>
+                <div class="summary-metrics-grid">
+                  <div class="summary-metric-item">
+                    <span class="sm-label">Total Exp:</span>
+                    <b class="sm-val" id="summary-total-exp">0 kg</b>
+                  </div>
+                  <div class="summary-metric-item">
+                    <span class="sm-label">Total Actual:</span>
+                    <b class="sm-val highlight" id="summary-total-act">0 kg</b>
+                  </div>
+                  <div class="summary-metric-item">
+                    <span class="sm-label">For Sale:</span>
+                    <b class="sm-val" id="summary-total-sale">0 kg</b>
+                  </div>
+                  <div class="summary-metric-item">
+                    <span class="sm-label">Household:</span>
+                    <b class="sm-val" id="summary-total-home">0 kg</b>
+                  </div>
+                  <div class="summary-metric-item">
+                    <span class="sm-label">Seed Kept:</span>
+                    <b class="sm-val" id="summary-total-seed">0 kg</b>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -751,143 +818,24 @@
             <!-- Stepper Nav Bar -->
             <div class="stepper-nav-bar" style="margin-top: 14px;">
               <button type="button" class="stepper-btn back secondary-btn" id="btn-back-to-parcel">← Parcel</button>
-              <button type="button" class="stepper-btn next primary-btn" id="btn-next-to-harvest">Continue to Harvest →</button>
+              <button type="button" class="stepper-btn next primary-btn" id="btn-next-to-postharvest">Continue to Post-Harvest →</button>
             </div>
           </div>
 
           <!-- =====================================================
-               STAGE 4: HARVEST / THRESHING LEVEL
+               STAGE 4: POST-HARVEST INSPECTION (Farmer Level, Off-Season)
                ===================================================== -->
-          <div class="drawer-tab-panel" id="tab-harvest">
-            <div class="insp-section-card">
-              <div class="card-section-title">
-                <span>🌾 Threshing Record (ICS_2026)</span>
-                <span class="badge status-pill" id="badge-threshing-status">Pending</span>
+          <div class="drawer-tab-panel" id="tab-postharvest">
+            <!-- Post-Harvest Level Hierarchy Indicator Banner -->
+            <div class="level-indicator-banner postharvest-banner">
+              <div class="banner-top-line">
+                <span class="banner-pill postharvest-pill">🛖 1 POST-HARVEST RECORD</span>
+                <span class="banner-scope">Off-season farmer inspection</span>
               </div>
-
-              <div class="form-group">
-                <label for="h-complete">Threshing Completed? *</label>
-                <select id="h-complete">
-                  <option value="1">1: Yes (Threshing finished)</option>
-                  <option value="2">2: No (Not yet complete)</option>
-                </select>
-              </div>
-
-              <!-- Conditional If Not Completed -->
-              <div id="h-incomplete-block" class="form-group conditional-block" style="display: none;">
-                <label for="h-reason-no">Reason Threshing Not Done</label>
-                <select id="h-reason-no">
-                  <option value="Not mature">Paddy not yet mature</option>
-                  <option value="Machine delay">Threshing contractor delayed</option>
-                  <option value="Weather">Adverse rain / weather</option>
-                  <option value="Labor">Labor shortage</option>
-                  <option value="Other">Other reason</option>
-                </select>
-              </div>
-
-              <!-- Threshing Completed Details -->
-              <div id="h-complete-block">
-                <div class="form-row-two">
-                  <div class="form-group">
-                    <label for="h-date">Threshing Date</label>
-                    <input type="date" id="h-date" />
-                  </div>
-                  <div class="form-group">
-                    <label for="h-method">Threshing Method</label>
-                    <select id="h-method">
-                      <option value="3">3: Combine Harvester</option>
-                      <option value="2">2: Hand Tractor Thresher</option>
-                      <option value="1">1: Manual / Hand Beating</option>
-                    </select>
-                  </div>
-                </div>
-
-                <!-- Machine Sanitation & Flush -->
-                <div id="h-machine-block" class="form-row-two">
-                  <div class="form-group">
-                    <label for="h-owner">Machine Owner / Operator</label>
-                    <input type="text" id="h-owner" placeholder="Contractor name" autocomplete="off" />
-                  </div>
-                  <div class="form-group">
-                    <label for="h-flush">Organic Flush Quantity (kg)</label>
-                    <input type="number" id="h-flush" placeholder="e.g. 50 kg flushed" value="0" />
-                  </div>
-                </div>
-
-                <div class="form-row-two">
-                  <div class="form-group">
-                    <label for="h-dry-loc">Paddy Drying Location</label>
-                    <select id="h-dry-loc">
-                      <option value="1">1: Tarp on Ground</option>
-                      <option value="2">2: Concrete Yard</option>
-                      <option value="3">3: Direct to Mill</option>
-                    </select>
-                  </div>
-                  <div class="form-group">
-                    <label for="h-diff-plots">Separate Threshing per Subplot?</label>
-                    <select id="h-diff-plots">
-                      <option value="1">1: Yes (Segregated varieties)</option>
-                      <option value="2">2: No (Mixed)</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div class="form-section-divider">Actual Paddy Disposition Breakdown</div>
-                <p class="helper-text">Sale + Consumption + Seed should equal Actual Harvest.</p>
-
-                <div class="form-group">
-                  <label for="h-actual-kg">Total Actual Harvest (kg) *</label>
-                  <input type="number" id="h-actual-kg" placeholder="e.g. 3500 kg" step="10" />
-                </div>
-
-                <div class="form-row-three">
-                  <div class="form-group">
-                    <label for="h-sale-kg">For Sale (kg)</label>
-                    <input type="number" id="h-sale-kg" placeholder="kg" step="10" />
-                  </div>
-                  <div class="form-group">
-                    <label for="h-consume-kg">Household (kg)</label>
-                    <input type="number" id="h-consume-kg" placeholder="kg" step="10" />
-                  </div>
-                  <div class="form-group">
-                    <label for="h-seed-kg">Seed Kept (kg)</label>
-                    <input type="number" id="h-seed-kg" placeholder="kg" step="10" />
-                  </div>
-                </div>
-
-                <div class="disposition-total-row" id="h-balance-row">
-                  <span>Allocated: <b id="h-alloc-sum">0 kg</b></span>
-                  <span>Balance: <b id="h-alloc-balance">0 kg</b></span>
-                </div>
-
-                <div class="form-section-divider">Payment for Threshing</div>
-                <div class="form-row-two">
-                  <div class="form-group">
-                    <label for="h-payment-type">Payment Mode</label>
-                    <select id="h-payment-type">
-                      <option value="1">1: Cash (KHR)</option>
-                      <option value="2">2: In-Kind (Paddy kg)</option>
-                    </select>
-                  </div>
-                  <div class="form-group">
-                    <label for="h-payment-amount" id="h-payment-label">Amount in Riel (KHR)</label>
-                    <input type="number" id="h-payment-amount" placeholder="e.g. 250000" />
-                  </div>
-                </div>
-              </div>
+              <div class="banner-main-title">Family <b id="banner-postharvest-family">--</b> Post-Harvest &amp; Storage</div>
+              <div class="banner-note">Completed once per farmer during the off-season rather than repeated for every parcel or subplot.</div>
             </div>
 
-            <!-- Stepper Nav Bar -->
-            <div class="stepper-nav-bar">
-              <button type="button" class="stepper-btn back secondary-btn" id="btn-back-to-subplots">← Subplots</button>
-              <button type="button" class="stepper-btn next primary-btn" id="btn-next-to-confirm">Post-Harvest &amp; Confirm →</button>
-            </div>
-          </div>
-
-          <!-- =====================================================
-               STAGE 5: POST-HARVEST, CHAMKAR & CONFIRMATION
-               ===================================================== -->
-          <div class="drawer-tab-panel" id="tab-confirm">
             <!-- Chamkar Card -->
             <div class="insp-section-card">
               <div class="card-section-title">
@@ -1003,6 +951,27 @@
               </div>
             </div>
 
+            <!-- Stepper Nav Bar -->
+            <div class="stepper-nav-bar">
+              <button type="button" class="stepper-btn back secondary-btn" id="btn-back-to-subplots">← Subplots</button>
+              <button type="button" class="stepper-btn next primary-btn" id="btn-next-to-confirm">Confirmation &amp; Sign-off →</button>
+            </div>
+          </div>
+
+          <!-- =====================================================
+               STAGE 5: CONFIRMATION & SIGN-OFF (Farmer Level)
+               ===================================================== -->
+          <div class="drawer-tab-panel" id="tab-confirm">
+            <!-- Confirmation Level Hierarchy Indicator Banner -->
+            <div class="level-indicator-banner confirm-banner">
+              <div class="banner-top-line">
+                <span class="banner-pill confirm-pill">✍️ 1 CONFIRMATION RECORD</span>
+                <span class="banner-scope">Farmer level sign-off</span>
+              </div>
+              <div class="banner-main-title">Family <b id="banner-confirm-family">--</b> Inspection Conclusion</div>
+              <div class="banner-note">One complete confirmation form covering the full inspection per farmer.</div>
+            </div>
+
             <!-- Final Conclusion & Confirmations -->
             <div class="insp-section-card highlight-card">
               <div class="card-section-title">
@@ -1048,7 +1017,7 @@
 
             <!-- Save and Export Actions -->
             <div class="stepper-nav-bar">
-              <button type="button" class="stepper-btn back secondary-btn" id="btn-back-to-harvest">← Harvest</button>
+              <button type="button" class="stepper-btn back secondary-btn" id="btn-back-to-postharvest">← Post-Harvest</button>
               <button type="button" class="stepper-btn primary-btn save-all-btn" id="btn-save-complete-inspection">
                 <span>💾 Save Complete Record</span>
               </button>
@@ -1250,6 +1219,134 @@
       </form>
     </div>
   </div>
+
+  <!-- =====================================================
+       DEDICATED SUBPLOT HARVEST MODAL (1 Harvest Record per Subplot)
+       ===================================================== -->
+  <div id="subplot-harvest-modal" class="modal-backdrop" style="display: none;">
+    <div class="modal-card modal-card-harvest">
+      <div class="modal-header">
+        <div>
+          <span class="modal-eyebrow" id="harvest-modal-plot-ref">Plot -- · Subplot --</span>
+          <h2 id="harvest-modal-title">🌾 Subplot Harvest Record</h2>
+        </div>
+        <button id="btn-close-harvest-modal" class="modal-close" aria-label="Close dialog">&times;</button>
+      </div>
+
+      <form id="subplot-harvest-form" class="modal-body">
+        <div class="harvest-meta-pill" id="harvest-modal-sp-meta">
+          <span id="harvest-meta-variety">Phka Rumduol</span> · 
+          <span id="harvest-meta-area">1.20 ha</span> (<span id="harvest-meta-pct">50%</span>) · 
+          <span>Expected: <b id="harvest-meta-exp">1,500 kg</b></span>
+        </div>
+
+        <div class="form-group">
+          <label for="sh-complete">Threshing Completed for this Subplot? *</label>
+          <select id="sh-complete" class="form-select">
+            <option value="1">1: Yes (Threshing finished)</option>
+            <option value="2">2: No (Not yet complete)</option>
+          </select>
+        </div>
+
+        <!-- Conditional If Not Completed -->
+        <div id="sh-incomplete-block" class="form-group conditional-block" style="display: none;">
+          <label for="sh-reason-no">Reason Threshing Not Done</label>
+          <select id="sh-reason-no" class="form-select">
+            <option value="Not mature">Paddy not yet mature</option>
+            <option value="Machine delay">Threshing contractor delayed</option>
+            <option value="Weather">Adverse rain / weather</option>
+            <option value="Labor">Labor shortage</option>
+            <option value="Other">Other reason</option>
+          </select>
+        </div>
+
+        <div id="sh-complete-block">
+          <div class="form-row-two">
+            <div class="form-group">
+              <label for="sh-date">Threshing Date</label>
+              <input type="date" id="sh-date" />
+            </div>
+            <div class="form-group">
+              <label for="sh-method">Threshing Method</label>
+              <select id="sh-method">
+                <option value="3">3: Combine Harvester</option>
+                <option value="2">2: Hand Tractor Thresher</option>
+                <option value="1">1: Manual / Hand Beating</option>
+              </select>
+            </div>
+          </div>
+
+          <div id="sh-machine-block" class="form-row-two">
+            <div class="form-group">
+              <label for="sh-owner">Machine Owner / Contractor</label>
+              <input type="text" id="sh-owner" placeholder="Contractor name" autocomplete="off" />
+            </div>
+            <div class="form-group">
+              <label for="sh-flush">Organic Flush Quantity (kg)</label>
+              <input type="number" id="sh-flush" placeholder="e.g. 50" value="0" />
+            </div>
+          </div>
+
+          <div class="form-row-two">
+            <div class="form-group">
+              <label for="sh-dry-loc">Paddy Drying Location</label>
+              <select id="sh-dry-loc">
+                <option value="1">1: Tarp on Ground</option>
+                <option value="2">2: Concrete Yard</option>
+                <option value="3">3: Direct to Mill</option>
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="sh-payment-type">Payment Mode</label>
+              <select id="sh-payment-type">
+                <option value="1">1: Cash (KHR)</option>
+                <option value="2">2: In-Kind (Paddy kg)</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-section-divider">Subplot Paddy Disposition Breakdown</div>
+          <p class="helper-text">Sale + Household + Seed must balance with Total Actual Harvest.</p>
+
+          <div class="form-group">
+            <label for="sh-actual-kg">Total Actual Harvest (kg) *</label>
+            <input type="number" id="sh-actual-kg" placeholder="e.g. 1800" step="10" required />
+          </div>
+
+          <div class="form-row-three">
+            <div class="form-group">
+              <label for="sh-sale-kg">For Sale (kg)</label>
+              <input type="number" id="sh-sale-kg" placeholder="kg" step="10" />
+            </div>
+            <div class="form-group">
+              <label for="sh-consume-kg">Household (kg)</label>
+              <input type="number" id="sh-consume-kg" placeholder="kg" step="10" />
+            </div>
+            <div class="form-group">
+              <label for="sh-seed-kg">Seed Kept (kg)</label>
+              <input type="number" id="sh-seed-kg" placeholder="kg" step="10" />
+            </div>
+          </div>
+
+          <div class="disposition-total-row" id="sh-balance-row">
+            <span>Allocated: <b id="sh-alloc-sum">0 kg</b></span>
+            <span>Balance: <b id="sh-alloc-balance">0 kg</b></span>
+          </div>
+
+          <div class="form-group" style="margin-top: 10px;">
+            <label for="sh-payment-amount" id="sh-payment-label">Payment Amount in Riel (KHR)</label>
+            <input type="number" id="sh-payment-amount" placeholder="e.g. 150000" />
+          </div>
+        </div>
+
+        <div class="modal-footer">
+          <button type="button" id="btn-cancel-harvest-modal" class="secondary-btn">Cancel</button>
+          <button type="submit" id="btn-save-subplot-harvest" class="primary-btn save-btn">Save Subplot Harvest</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
 
   <!-- Toast Notification -->
   <div id="toast" class="toast"></div>

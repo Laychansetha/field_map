@@ -2817,4 +2817,255 @@ html, body {
   color: #4ade80;
 }
 
+/* ==========================================================
+   HIERARCHY LEVEL INDICATOR BANNERS (Farmer -> Parcel -> Subplots -> PostHarvest -> Confirm)
+   ========================================================== */
+.level-indicator-banner {
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+}
+
+.level-indicator-banner .banner-top-line {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.72rem;
+}
+
+.level-indicator-banner .banner-pill {
+  font-size: 0.68rem;
+  font-weight: 800;
+  padding: 2px 8px;
+  border-radius: 12px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.level-indicator-banner .banner-scope {
+  color: var(--text-muted);
+  font-size: 0.7rem;
+}
+
+.level-indicator-banner .banner-main-title {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.level-indicator-banner .banner-note {
+  font-size: 0.72rem;
+  color: var(--text-secondary);
+  line-height: 1.3;
+}
+
+/* Specific Level Banner Themes */
+.farmer-banner {
+  background: linear-gradient(135deg, rgba(5, 150, 105, 0.22), rgba(16, 185, 129, 0.08));
+  border-color: rgba(16, 185, 129, 0.35);
+}
+.farmer-pill {
+  background: #059669;
+  color: #ecfdf5;
+}
+
+.parcel-banner {
+  background: linear-gradient(135deg, rgba(2, 132, 199, 0.22), rgba(14, 165, 233, 0.08));
+  border-color: rgba(14, 165, 233, 0.35);
+}
+.parcel-pill {
+  background: #0284c7;
+  color: #f0f9ff;
+}
+
+.subplots-banner {
+  background: linear-gradient(135deg, rgba(217, 119, 6, 0.22), rgba(245, 158, 11, 0.08));
+  border-color: rgba(245, 158, 11, 0.35);
+}
+.subplots-pill {
+  background: #d97706;
+  color: #fffbeb;
+}
+
+.postharvest-banner {
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.22), rgba(139, 92, 246, 0.08));
+  border-color: rgba(139, 92, 246, 0.35);
+}
+.postharvest-pill {
+  background: #7c3aed;
+  color: #f5f3ff;
+}
+
+.confirm-banner {
+  background: linear-gradient(135deg, rgba(220, 38, 38, 0.22), rgba(239, 68, 68, 0.08));
+  border-color: rgba(239, 68, 68, 0.35);
+}
+.confirm-pill {
+  background: #dc2626;
+  color: #fef2f2;
+}
+
+/* Family Parcels Switcher Box */
+.family-parcels-box {
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: var(--radius-sm);
+  padding: 8px 10px;
+  margin-bottom: 12px;
+}
+
+.parcels-box-header {
+  font-size: 0.74rem;
+  font-weight: 700;
+  color: var(--text-secondary);
+  margin-bottom: 6px;
+}
+
+.parcels-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.family-parcel-chip {
+  padding: 4px 9px;
+  border-radius: 14px;
+  font-size: 0.74rem;
+  font-weight: 700;
+  cursor: pointer;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-secondary);
+  transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.family-parcel-chip:hover {
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+}
+
+.family-parcel-chip.active-parcel {
+  background: rgba(2, 132, 199, 0.25);
+  border-color: #38bdf8;
+  color: #38bdf8;
+  box-shadow: 0 0 8px rgba(56, 189, 248, 0.25);
+}
+
+/* Subplot Harvest Badge & Buttons */
+.insp-badge-harvest {
+  background: rgba(34, 197, 94, 0.2);
+  color: #4ade80;
+  border: 1px solid rgba(34, 197, 94, 0.4);
+}
+
+.insp-badge-pending {
+  background: rgba(245, 158, 11, 0.15);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.35);
+}
+
+.sp-harvest-btn {
+  background: rgba(228, 168, 52, 0.15);
+  border: 1px solid rgba(228, 168, 52, 0.4);
+  color: #facc15;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.sp-harvest-btn:hover {
+  background: rgba(228, 168, 52, 0.3);
+  color: #fff;
+}
+
+.sp-inspect-btn {
+  background: rgba(0, 240, 255, 0.12);
+  border: 1px solid rgba(0, 240, 255, 0.35);
+  color: #00f0ff;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.sp-inspect-btn:hover {
+  background: rgba(0, 240, 255, 0.25);
+  color: #fff;
+}
+
+/* Parcel Harvest Summary Card */
+.parcel-harvest-summary {
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: rgba(228, 168, 52, 0.08);
+  border: 1px solid rgba(228, 168, 52, 0.25);
+  border-radius: var(--radius-sm);
+}
+
+.summary-title {
+  font-size: 0.75rem;
+  font-weight: 800;
+  color: #facc15;
+  margin-bottom: 6px;
+  letter-spacing: 0.03em;
+}
+
+.summary-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(85px, 1fr));
+  gap: 6px;
+}
+
+.summary-metric-item {
+  display: flex;
+  flex-direction: column;
+  background: rgba(0, 0, 0, 0.3);
+  padding: 4px 6px;
+  border-radius: 4px;
+}
+
+.sm-label {
+  font-size: 0.65rem;
+  color: var(--text-muted);
+}
+
+.sm-val {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #fff;
+}
+
+.sm-val.highlight {
+  color: #4ade80;
+}
+
+/* Harvest Modal */
+.modal-card-harvest {
+  max-width: 480px;
+}
+
+.harvest-meta-pill {
+  padding: 6px 10px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: var(--radius-sm);
+  font-size: 0.76rem;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+}
+
+
 

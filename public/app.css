@@ -586,11 +586,11 @@ html, body {
 /* Sticky Header containing Title & Tabs */
 .drawer-header-sticky {
   background: rgba(10, 24, 19, 0.98);
-  padding: 14px 18px 12px;
+  padding: 12px 14px 10px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
   flex-shrink: 0;
 }
 
@@ -1803,43 +1803,8 @@ html, body {
 }
 
 /* ==========================================================
-   DRAWER TAB BAR  (Subplots | Plot Info | Farmer)
+   DRAWER TAB PANELS
    ========================================================== */
-.drawer-tabs {
-  display: flex;
-  border-bottom: 1px solid var(--border-color);
-  background: rgba(0,0,0,0.2);
-  margin-bottom: 12px;
-  flex-shrink: 0;
-}
-
-.drawer-tab-btn {
-  flex: 1;
-  background: transparent;
-  border: none;
-  border-bottom: 2px solid transparent;
-  color: var(--text-muted);
-  font-size: 0.78rem;
-  font-weight: 600;
-  padding: 9px 4px 7px;
-  cursor: pointer;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  transition: color 0.18s, border-color 0.18s;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-}
-
-.drawer-tab-btn.active {
-  color: #00f0ff;
-  border-bottom-color: #00f0ff;
-}
-
-.drawer-tab-btn svg {
-  flex-shrink: 0;
-}
 
 .drawer-tab-panel {
   display: none;
@@ -2249,27 +2214,29 @@ html, body {
 .drawer-tabs {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  gap: 5px;
-  padding: 4px;
+  gap: 3px;
+  padding: 3px;
   background: rgba(0, 0, 0, 0.45);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 10px;
+  border-radius: 8px;
   margin-bottom: 4px;
 }
 
 .drawer-tab-btn {
   background: transparent;
   border: 1px solid transparent;
-  border-radius: 7px;
+  border-radius: 6px;
   color: #94a3b8;
-  font-size: 0.78rem;
+  font-size: 0.69rem;
   font-weight: 700;
-  padding: 8px 3px;
+  letter-spacing: -0.015em;
+  text-transform: none;
+  padding: 6px 2px;
   cursor: pointer;
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 4px;
   transition: all 0.15s ease;
   user-select: none;
   min-width: 0;
@@ -2281,12 +2248,12 @@ html, body {
 }
 
 .drawer-tab-btn .step-num {
-  width: 19px;
-  height: 19px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
   background: rgba(255, 255, 255, 0.12);
   color: #cbd5e1;
-  font-size: 0.68rem;
+  font-size: 0.60rem;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -2300,6 +2267,12 @@ html, body {
   overflow: hidden;
   text-overflow: ellipsis;
   font-weight: 700;
+  letter-spacing: -0.015em;
+}
+
+.drawer-tab-btn[data-tab="tab-postharvest"] .step-title {
+  font-size: 0.63rem;
+  letter-spacing: -0.025em;
 }
 
 .drawer-tab-btn.active {
@@ -2320,20 +2293,48 @@ html, body {
   color: #fff;
 }
 
+.tab-label-full {
+  display: inline;
+}
+.tab-label-short {
+  display: none;
+}
+
 @media (max-width: 520px) {
   .drawer-tabs {
-    gap: 3px;
-    padding: 3px;
+    gap: 2px;
+    padding: 2px;
   }
   .drawer-tab-btn {
-    padding: 7px 2px;
-    gap: 4px;
-    font-size: 0.72rem;
+    padding: 5px 1px;
+    gap: 3px;
+    font-size: 0.63rem;
   }
   .drawer-tab-btn .step-num {
-    width: 16px;
-    height: 16px;
-    font-size: 0.62rem;
+    width: 14px;
+    height: 14px;
+    font-size: 0.54rem;
+  }
+  .drawer-tab-btn[data-tab="tab-postharvest"] .step-title {
+    font-size: 0.59rem;
+  }
+  .tab-label-full {
+    display: none;
+  }
+  .tab-label-short {
+    display: inline;
+  }
+}
+
+@media (max-width: 380px) {
+  .drawer-tab-btn {
+    font-size: 0.58rem;
+    gap: 2px;
+  }
+  .drawer-tab-btn .step-num {
+    width: 13px;
+    height: 13px;
+    font-size: 0.50rem;
   }
 }
 

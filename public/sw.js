@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ibis-field-navigator-v15';
+const CACHE_NAME = 'ibis-field-navigator-v16';
 
 const PRECACHE_URLS = [
   './',

@@ -2092,7 +2092,10 @@
       if (villageMatches.length >= 4) break;
     }
 
-    // 3. Search Plots across Family ID, Plot Code, Farmer Name, Village, Site
+    // 3. Search Plots across Village + Family ID, Family ID, Plot Code, Farmer Name, Village, Site
+    const qClean = q.replace(/[+,-]/g, ' ').replace(/\s+/g, ' ').trim();
+    const qTokens = qClean.split(' ').filter(Boolean);
+
     const plotMatches = [];
     for (let i = 0; i < searchIndex.length && plotMatches.length < 30; i++) {
       const p = searchIndex[i];
@@ -2101,16 +2104,28 @@
       const vilLower = (p.village || '').toLowerCase();
       const siteLower = (p.site || '').toLowerCase();
       const combinedCode = `${famLower}-${plotLower}`;
+      const vilFam1 = `${vilLower} ${famLower}`;
+      const vilFam2 = `${famLower} ${vilLower}`;
 
-      // Farmer name lookup from ICS records (hoh_name or interviewee_name)
-      const farmerRec = farmersStore[p.family_id];
+      // Farmer name lookup from ICS records (Village + Family ID unique key)
+      const farmerRec = getFarmerRecord(p);
       const farmerName = (farmerRec && (farmerRec.hoh_name || farmerRec.interviewee_name)) || p.farmer_name || '';
       const farmerLower = farmerName.toLowerCase();
 
       let score = 0;
       let matchedBy = '';
 
-      if (famLower === q || plotLower === q || combinedCode === q) {
+      // Check Village + Family ID combination match
+      if (vilFam1 === qClean || vilFam2 === qClean) {
+        score = 120;
+        matchedBy = 'village_family';
+      } else if (vilFam1.includes(qClean) || vilFam2.includes(qClean)) {
+        score = 110;
+        matchedBy = 'village_family';
+      } else if (qTokens.length > 1 && qTokens.some(t => vilLower.includes(t)) && qTokens.some(t => famLower.includes(t) || plotLower === t)) {
+        score = 105;
+        matchedBy = 'village_family';
+      } else if (famLower === q || plotLower === q || combinedCode === q) {
         score = 100;
         matchedBy = famLower === q ? 'family' : 'plot';
       } else if (farmerLower && farmerLower === q) {
@@ -2161,25 +2176,26 @@
 
     if (totalResults === 0) {
       searchSuggestions.innerHTML = `
-        <div class="suggestion-item" style="cursor: default; color: var(--text-muted);">
-          No matches found for "${escapeHtml(query)}" across Site, Village, Family, Farmer, or Plot
-        </div>`;
+        <div class="search-empty-state">
+          No matching landscapes, villages, plots, or farmers found for "${escapeHtml(query)}"
+        </div>
+      `;
       searchSuggestions.style.display = 'block';
       return;
     }
 
     const frag = document.createDocumentFragment();
 
-    // Render Site / Landscape shortcuts first
+    // Render Sites
     siteMatches.forEach((sm) => {
       const item = document.createElement('div');
-      item.className = 'suggestion-item suggestion-shortcut';
+      item.className = 'suggestion-item';
       item.innerHTML = `
         <div class="suggestion-main">
-          <span class="suggestion-title">🗺️ Landscape: ${highlightMatch(sm.site, query)}</span>
-          <span class="suggestion-subtitle">${sm.count.toLocaleString()} registered plots · Click to filter & zoom landscape</span>
+          <span class="suggestion-title">📍 Landscape: ${highlightMatch(sm.site, query)}</span>
+          <span class="suggestion-subtitle">${sm.count} plots mapped · Click to filter & zoom site</span>
         </div>
-        <span class="suggestion-tag tag-site">Landscape</span>
+        <span class="suggestion-tag tag-site">Site</span>
       `;
       item.addEventListener('click', () => {
         searchSuggestions.style.display = 'none';
@@ -2187,15 +2203,15 @@
         filterSite.value = sm.site;
         onSiteChanged();
         applyFilters();
-        showToast(`Filtered to ${sm.site} landscape (${sm.count.toLocaleString()} plots)`);
+        showToast(`Filtered to ${sm.site}`);
       });
       frag.appendChild(item);
     });
 
-    // Render Village shortcuts next
+    // Render Villages
     villageMatches.forEach((vm) => {
       const item = document.createElement('div');
-      item.className = 'suggestion-item suggestion-shortcut';
+      item.className = 'suggestion-item';
       item.innerHTML = `
         <div class="suggestion-main">
           <span class="suggestion-title">🏘️ Village: ${highlightMatch(vm.village, query)}</span>
@@ -2230,7 +2246,11 @@
       let titleHtml = '';
       let tagHtml = `<span class="suggestion-tag">Plot ${escapeHtml(p.plot_id)}</span>`;
 
-      if (pm.matchedBy === 'farmer' && pm.farmerName) {
+      if (pm.matchedBy === 'village_family') {
+        const farmerSnippet = pm.farmerName ? ` · 🧑‍🌾 ${escapeHtml(pm.farmerName)}` : '';
+        titleHtml = `<span class="suggestion-title">🏘️ ${villageHighlight} · Family ${familyHighlight} (Plot ${plotHighlight})${farmerSnippet}</span>`;
+        tagHtml = `<span class="suggestion-tag tag-farmer">Village + Family</span>`;
+      } else if (pm.matchedBy === 'farmer' && pm.farmerName) {
         const farmerHighlight = highlightMatch(pm.farmerName, query);
         titleHtml = `<span class="suggestion-title">🧑‍🌾 ${farmerHighlight} · Family ${familyHighlight} (Plot ${plotHighlight})</span>`;
         tagHtml = `<span class="suggestion-tag tag-farmer">Farmer</span>`;
@@ -2254,9 +2274,7 @@
 
       item.addEventListener('click', () => {
         searchSuggestions.style.display = 'none';
-        const label = pm.farmerName
-          ? `${p.family_id} (Plot ${p.plot_id} - ${pm.farmerName})`
-          : `${p.family_id} (Plot ${p.plot_id})`;
+        const label = `${p.village} · Family ${p.family_id} (Plot ${p.plot_id}${pm.farmerName ? ' - ' + pm.farmerName : ''})`;
         quickSearchInput.value = label;
         selectPlot(p, true);
       });
@@ -2777,14 +2795,46 @@
   const ICS_INSPECTIONS_KEY = 'ibis_ics_2026_inspections_v2';
   const SESSION_STORE_KEY   = 'ibis_session_v1';
 
-  let farmersStore   = {}; // { [family_id]: farmerRecord }
+  let farmersStore   = {}; // { [village__family_id]: farmerRecord }
   let icsInspections = {}; // { [plot_db_id]: inspectionRecord }
   let sessionState   = { inspectorName: '', seasonYear: new Date().getFullYear() };
   let editingSubplotInstance = null; // Subplot object currently open in subplotModal for inspection
 
+  // --- Unique Farmer Key Logic (Village + Family ID) ---
+  function makeFarmerKey(village, familyId) {
+    const v = (village || '').trim().toLowerCase();
+    const f = (familyId || '').trim();
+    if (!v) return f;
+    return `${v}__${f}`;
+  }
+
+  function getFarmerKey(p) {
+    if (!p) return '';
+    return makeFarmerKey(p.village, p.family_id);
+  }
+
+  function getFarmerDisplayLabel(village, familyId) {
+    const v = (village || '').trim();
+    const f = (familyId || '').trim();
+    if (v && f) return `${v} · Family ${f}`;
+    return f ? `Family ${f}` : v;
+  }
+
+  function getFarmerRecord(p) {
+    if (!p) return {};
+    const key = getFarmerKey(p);
+    return farmersStore[key] || (p.family_id ? farmersStore[p.family_id] : {}) || {};
+  }
+
   function loadICSStores() {
     try {
-      farmersStore   = JSON.parse(localStorage.getItem(FARMERS_STORE_KEY) || '{}');
+      const rawFarmers = JSON.parse(localStorage.getItem(FARMERS_STORE_KEY) || '{}');
+      farmersStore = {};
+      for (const k in rawFarmers) {
+        const rec = rawFarmers[k];
+        const key = (rec.village && rec.family_id) ? makeFarmerKey(rec.village, rec.family_id) : k;
+        farmersStore[key] = rec;
+      }
       icsInspections = JSON.parse(localStorage.getItem(ICS_INSPECTIONS_KEY) || '{}');
       const sess     = JSON.parse(localStorage.getItem(SESSION_STORE_KEY) || '{}');
       if (sess.inspectorName) sessionState.inspectorName = sess.inspectorName;
@@ -3212,40 +3262,47 @@
     if (!selectedPlot) return;
     const plotDbId = selectedPlot.id;
     const familyId = selectedPlot.family_id;
+    const village = (selectedPlot.village || '').trim();
+    const farmerKey = getFarmerKey(selectedPlot);
+    const farmerLabel = getFarmerDisplayLabel(village, familyId);
 
     // Header labels & Hierarchy Banners
     const dispFamily = document.getElementById('f-family-display');
-    if (dispFamily) dispFamily.textContent = `Family ${familyId}`;
+    if (dispFamily) dispFamily.textContent = farmerLabel;
     const dispPlot = document.getElementById('p-plot-display');
-    if (dispPlot) dispPlot.textContent = `Plot ${selectedPlot.plot_id} · ${selectedPlot.village || ''}`;
+    if (dispPlot) dispPlot.textContent = `Plot ${selectedPlot.plot_id} · ${village}`;
 
     const setBannerText = (id, txt) => {
       const el = document.getElementById(id);
       if (el) el.textContent = txt;
     };
-    setBannerText('banner-family-id', familyId);
+    setBannerText('banner-family-id', farmerLabel);
     setBannerText('banner-plot-id', selectedPlot.plot_id);
     setBannerText('banner-subplots-plot', selectedPlot.plot_id);
-    setBannerText('banner-postharvest-family', familyId);
-    setBannerText('banner-confirm-family', familyId);
+    setBannerText('banner-postharvest-family', farmerLabel);
+    setBannerText('banner-confirm-family', farmerLabel);
 
     const btnExportLabel = document.getElementById('btn-export-ics-csv-label');
     if (btnExportLabel) {
-      btnExportLabel.textContent = `Export Farmer Report (.csv) · Family ${familyId}`;
+      btnExportLabel.textContent = `Export Farmer Report (.csv) · ${farmerLabel}`;
     }
 
-    // Registered Parcels Switcher for this Farmer
+    // Registered Parcels Switcher for this Farmer (Strictly Village + Family ID)
     const familyParcelsBox = document.getElementById('family-parcels-container');
     const familyParcelsList = document.getElementById('family-parcels-list');
     const familyParcelsCount = document.getElementById('family-parcels-count');
 
     if (familyParcelsBox && familyParcelsList) {
       const familyPlots = allFeatures.filter(
-        (ft) => ft.properties && ft.properties.family_id === familyId
+        (ft) => ft.properties && getFarmerKey(ft.properties) === farmerKey
       );
       if (familyPlots.length > 1) {
         familyParcelsBox.style.display = 'block';
         if (familyParcelsCount) familyParcelsCount.textContent = familyPlots.length.toString();
+        const headerTitle = familyParcelsBox.querySelector('.parcels-box-title');
+        if (headerTitle) {
+          headerTitle.innerHTML = `🗺️ Registered Parcels in ${escapeHtml(village || 'Village')} (<span id="family-parcels-count">${familyPlots.length}</span>):`;
+        }
         familyParcelsList.innerHTML = '';
         familyPlots.forEach((ft) => {
           const pProps = ft.properties;
@@ -3264,8 +3321,8 @@
       }
     }
 
-    // 1. Stage 1: Farmer Baseline (Recorded once per farmer)
-    const farmer = farmersStore[familyId] || {};
+    // 1. Stage 1: Farmer Baseline (Recorded once per farmer: Village + Family ID)
+    const farmer = getFarmerRecord(selectedPlot);
     setVal('f-compliant', farmer.farmer_compliant || '1');
     setChipValues('#f-nc-types', farmer.nc_types || []);
     setVal('f-nc-remark', farmer.nc_remark || '');
@@ -3371,14 +3428,19 @@
     return Array.from(container.querySelectorAll('input[type="checkbox"]:checked')).map((cb) => cb.value);
   }
 
-  // --- Form Auto-Save Handlers (Strict Hierarchy) ---
+  // --- Form Auto-Save Handlers (Strict Hierarchy: Village + Family ID) ---
   function saveCurrentFarmerForm() {
     if (!selectedPlot) return;
+    const farmerKey = getFarmerKey(selectedPlot);
     const fid = selectedPlot.family_id;
-    const existing = farmersStore[fid] || {};
-    farmersStore[fid] = {
+    const village = selectedPlot.village || '';
+    const existing = farmersStore[farmerKey] || farmersStore[fid] || {};
+    farmersStore[farmerKey] = {
       ...existing,
+      farmer_key: farmerKey,
       family_id: fid,
+      village: village,
+      site: selectedPlot.site || '',
       // Compliance
       farmer_compliant: document.getElementById('f-compliant')?.value || '1',
       nc_types: getChipValues('#f-nc-types'),
@@ -3417,6 +3479,8 @@
       ...existing,
       plot_db_id: selectedPlot.id,
       family_id: selectedPlot.family_id,
+      village: selectedPlot.village || '',
+      farmer_key: getFarmerKey(selectedPlot),
       plot_id: selectedPlot.plot_id,
       inspection_date: document.getElementById('p-inspection-date')?.value || '',
       area_ha: parseFloat(document.getElementById('p-area-ha')?.value) || selectedPlot.area_ha || 0,
@@ -3442,9 +3506,16 @@
 
   function saveCurrentPostHarvestForm() {
     if (!selectedPlot) return;
-    const fid = selectedPlot.family_id;
-    if (!farmersStore[fid]) farmersStore[fid] = { family_id: fid };
-    farmersStore[fid].post_harvest = {
+    const farmerKey = getFarmerKey(selectedPlot);
+    if (!farmersStore[farmerKey]) {
+      farmersStore[farmerKey] = {
+        farmer_key: farmerKey,
+        family_id: selectedPlot.family_id,
+        village: selectedPlot.village || '',
+        site: selectedPlot.site || ''
+      };
+    }
+    farmersStore[farmerKey].post_harvest = {
       have_chamkar: document.getElementById('c-have-chamkar')?.value || '2',
       chamkar_num: parseInt(document.getElementById('c-chamkar-num')?.value, 10) || 1,
       chamkar_area: parseFloat(document.getElementById('c-chamkar-area')?.value) || 0,
@@ -3464,12 +3535,19 @@
 
   function saveCurrentConfirmationForm() {
     if (!selectedPlot) return;
-    const fid = selectedPlot.family_id;
-    if (!farmersStore[fid]) farmersStore[fid] = { family_id: fid };
+    const farmerKey = getFarmerKey(selectedPlot);
+    if (!farmersStore[farmerKey]) {
+      farmersStore[farmerKey] = {
+        farmer_key: farmerKey,
+        family_id: selectedPlot.family_id,
+        village: selectedPlot.village || '',
+        site: selectedPlot.site || ''
+      };
+    }
     const inspector = document.getElementById('c-inspector-name')?.value.trim() || '';
     if (inspector) sessionState.inspectorName = inspector;
     const sigData = getSignatureDataUrl();
-    farmersStore[fid].confirmation = {
+    farmersStore[farmerKey].confirmation = {
       certified_status: document.getElementById('c-certified-status')?.value || '1',
       conclusion_notes: document.getElementById('c-conclusion-notes')?.value.trim() || '',
       inspector_name: inspector,
@@ -3493,7 +3571,7 @@
     saveCurrentConfirmationForm();
 
     renderSubplotsListForSelectedPlot();
-    showToast(`✅ Saved complete inspection record for Family ${selectedPlot.family_id} (Plot ${selectedPlot.plot_id})`);
+    showToast(`✅ Saved complete inspection for ${selectedPlot.village || 'Village'} · Family ${selectedPlot.family_id} (Plot ${selectedPlot.plot_id})`);
   }
 
   // --- Subplot Card Actions & Inspection Modal ---
@@ -3658,23 +3736,25 @@
 
   // --- Export ICS 2026 CSV (Hierarchy: Farmer -> Parcel -> Subplot -> Harvest) ---
   function exportICSCsv() {
-    const targetFid = (selectedPlot && selectedPlot.family_id) ? selectedPlot.family_id : null;
+    const targetFarmerKey = selectedPlot ? getFarmerKey(selectedPlot) : null;
+    const targetFid = selectedPlot ? selectedPlot.family_id : null;
+    const targetVillage = selectedPlot ? (selectedPlot.village || '') : '';
     const season = sessionState.seasonYear;
 
-    // Determine family IDs to export.
-    // If an inspector is viewing a plot, export for that specific farmer.
-    // Otherwise, export all recorded families.
-    let familyIds = [];
-    if (targetFid) {
-      familyIds = [targetFid];
+    // Determine farmer keys to export.
+    // If an inspector is viewing a plot, export for that specific farmer (Village + Family ID).
+    // Otherwise, export all recorded farmers.
+    let farmerKeys = [];
+    if (targetFarmerKey) {
+      farmerKeys = [targetFarmerKey];
     } else {
-      familyIds = Array.from(new Set([
+      farmerKeys = Array.from(new Set([
         ...Object.keys(farmersStore),
-        ...subplots.map((s) => s.parent_family_id).filter(Boolean)
+        ...allFeatures.map((ft) => getFarmerKey(ft.properties)).filter(Boolean)
       ]));
     }
 
-    if (familyIds.length === 0) {
+    if (farmerKeys.length === 0) {
       showToast('⚠️ No inspection records or farmer selected to export.');
       return;
     }
@@ -3700,21 +3780,21 @@
       'final_recommendation', 'inspector_notes', 'inspector_name', 'village_rep', 'has_signature', 'export_timestamp'
     ].join(','));
 
-    familyIds.forEach((fid) => {
-      const f = farmersStore[fid] || {};
+    farmerKeys.forEach((fKey) => {
+      const f = farmersStore[fKey] || {};
       const ph = f.post_harvest || {};
       const conf = f.confirmation || {};
 
-      // Retrieve all registered parcels for this family
+      // Retrieve all registered parcels for this family strictly in the same village
       let parcels = allFeatures
-        .filter((ft) => ft.properties && ft.properties.family_id === fid)
+        .filter((ft) => ft.properties && getFarmerKey(ft.properties) === fKey)
         .map((ft) => ft.properties);
 
       if (parcels.length === 0) {
-        if (selectedPlot && selectedPlot.family_id === fid) {
+        if (selectedPlot && getFarmerKey(selectedPlot) === fKey) {
           parcels = [selectedPlot];
         } else {
-          const famSubplots = subplots.filter((s) => s.parent_family_id === fid);
+          const famSubplots = subplots.filter((s) => s.parent_farmer_key === fKey || s.parent_family_id === f.family_id);
           const pMap = {};
           famSubplots.forEach((s) => {
             if (!pMap[s.parent_plot_id]) {
@@ -3723,7 +3803,8 @@
                 plot_id: s.parent_plot_num,
                 area_ha: s.parent_area_ha,
                 site: s.parent_site,
-                village: s.parent_village
+                village: s.parent_village,
+                family_id: s.parent_family_id
               };
             }
           });
@@ -3732,7 +3813,7 @@
       }
 
       if (parcels.length === 0) {
-        parcels = [{ id: 'N/A', plot_id: 'N/A', area_ha: 0, site: '', village: '' }];
+        parcels = [{ id: 'N/A', plot_id: 'N/A', area_ha: 0, site: '', village: f.village || '', family_id: f.family_id || '' }];
       }
 
       parcels.forEach((parcel) => {
@@ -3740,9 +3821,10 @@
         const pNum = parcel.plot_id;
         const insp = icsInspections[pId] || {};
         const pSite = parcel.site || '';
-        const pVillage = parcel.village || '';
+        const pVillage = parcel.village || f.village || '';
         const pCommune = parcel.commune || '';
         const pArea = parcel.area_ha || insp.area_ha || '';
+        const fid = parcel.family_id || f.family_id || '';
 
         // Retrieve all subplots for this parcel
         const pSubplots = subplots.filter(
@@ -3821,11 +3903,11 @@
     }
 
     const csv = rows.join('\r\n');
-    const filename = targetFid
-      ? `ibis_inspection_family_${targetFid}_${season}_${new Date().toISOString().slice(0, 10)}.csv`
+    const filename = (targetVillage && targetFid)
+      ? `ibis_inspection_${targetVillage.replace(/[^a-zA-Z0-9_-]/g, '_')}_${targetFid}_${season}_${new Date().toISOString().slice(0, 10)}.csv`
       : `ibis_ics_2026_report_${season}_${new Date().toISOString().slice(0, 10)}.csv`;
     downloadBlob(csv, filename, 'text/csv');
-    showToast(`✅ Exported inspection file for Family ${targetFid || 'All'} (${rows.length - 1} record(s))`);
+    showToast(`✅ Exported inspection file for ${targetVillage ? targetVillage + ' · ' : ''}Family ${targetFid || 'All'} (${rows.length - 1} record(s))`);
   }
 
 

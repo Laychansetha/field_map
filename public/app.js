@@ -1839,6 +1839,18 @@
       }
     });
 
+    quickSearchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        const firstItem = searchSuggestions.querySelector('.suggestion-item:not([style*="cursor: default"])');
+        if (firstItem) {
+          e.preventDefault();
+          firstItem.click();
+        }
+      } else if (e.key === 'Escape') {
+        searchSuggestions.style.display = 'none';
+      }
+    });
+
     btnClearSearch.addEventListener('click', () => {
       quickSearchInput.value = '';
       btnClearSearch.style.display = 'none';
@@ -2001,7 +2013,7 @@
     }
   }
 
-  // --- Quick Search Autocomplete ---
+  // --- Quick Search Autocomplete (5 Dimensions: Site, Village, Family ID, Farmer, Plot Code) ---
   function handleQuickSearch() {
     const rawQuery = quickSearchInput.value.trim();
     if (!rawQuery) {
@@ -2012,53 +2024,205 @@
 
     btnClearSearch.style.display = 'flex';
     const q = rawQuery.toLowerCase();
+    const cleanQ = q.replace(/^(plot|family|parcel)\s+/i, '').trim();
 
-    const matches = [];
-    for (let i = 0; i < searchIndex.length && matches.length < 20; i++) {
+    // 1. Check Site / Landscape matches
+    const siteMatches = [];
+    const allSites = Object.keys(hierarchy);
+    allSites.forEach((site) => {
+      if (site.toLowerCase().includes(q)) {
+        let plotCount = 0;
+        for (const vil in hierarchy[site]) {
+          for (const fam in hierarchy[site][vil]) {
+            plotCount += hierarchy[site][vil][fam].length;
+          }
+        }
+        siteMatches.push({ type: 'site', site, count: plotCount });
+      }
+    });
+
+    // 2. Check Village matches (limit to top 4)
+    const villageMatches = [];
+    for (const site in hierarchy) {
+      for (const vil in hierarchy[site]) {
+        if (vil.toLowerCase().includes(q)) {
+          let plotCount = 0;
+          for (const fam in hierarchy[site][vil]) {
+            plotCount += hierarchy[site][vil][fam].length;
+          }
+          villageMatches.push({ type: 'village', site, village: vil, count: plotCount });
+          if (villageMatches.length >= 4) break;
+        }
+      }
+      if (villageMatches.length >= 4) break;
+    }
+
+    // 3. Search Plots across Family ID, Plot Code, Farmer Name, Village, Site
+    const plotMatches = [];
+    for (let i = 0; i < searchIndex.length && plotMatches.length < 30; i++) {
       const p = searchIndex[i];
-      const matchFamily = p.family_id.toLowerCase().includes(q);
-      const matchPlot = p.plot_id.toLowerCase().includes(q);
-      const matchVillage = p.village.toLowerCase().includes(q);
+      const famLower = (p.family_id || '').toLowerCase();
+      const plotLower = (p.plot_id || '').toLowerCase();
+      const vilLower = (p.village || '').toLowerCase();
+      const siteLower = (p.site || '').toLowerCase();
+      const combinedCode = `${famLower}-${plotLower}`;
 
-      if (matchFamily || matchPlot || matchVillage) {
-        matches.push(p);
+      // Farmer name lookup from ICS records (hoh_name or interviewee_name)
+      const farmerRec = farmersStore[p.family_id];
+      const farmerName = (farmerRec && (farmerRec.hoh_name || farmerRec.interviewee_name)) || p.farmer_name || '';
+      const farmerLower = farmerName.toLowerCase();
+
+      let score = 0;
+      let matchedBy = '';
+
+      if (famLower === q || plotLower === q || combinedCode === q) {
+        score = 100;
+        matchedBy = famLower === q ? 'family' : 'plot';
+      } else if (farmerLower && farmerLower === q) {
+        score = 95;
+        matchedBy = 'farmer';
+      } else if (farmerLower && farmerLower.includes(q)) {
+        score = 80;
+        matchedBy = 'farmer';
+      } else if (famLower.includes(q)) {
+        score = 70;
+        matchedBy = 'family';
+      } else if (plotLower === cleanQ || (cleanQ && plotLower.includes(cleanQ)) || combinedCode.includes(q)) {
+        score = 65;
+        matchedBy = 'plot';
+      } else if (vilLower.includes(q)) {
+        score = 40;
+        matchedBy = 'village';
+      } else if (siteLower.includes(q)) {
+        score = 20;
+        matchedBy = 'site';
+      }
+
+      if (score > 0) {
+        plotMatches.push({
+          type: 'plot',
+          plot: p,
+          farmerName,
+          matchedBy,
+          score
+        });
       }
     }
 
-    renderSearchSuggestions(matches, q);
+    // Sort plot matches by score descending
+    plotMatches.sort((a, b) => b.score - a.score);
+
+    renderSearchSuggestions({
+      siteMatches,
+      villageMatches,
+      plotMatches: plotMatches.slice(0, 18),
+      query: rawQuery
+    });
   }
 
-  function renderSearchSuggestions(matches, query) {
+  function renderSearchSuggestions({ siteMatches, villageMatches, plotMatches, query }) {
     searchSuggestions.innerHTML = '';
-    if (matches.length === 0) {
+    const totalResults = siteMatches.length + villageMatches.length + plotMatches.length;
+
+    if (totalResults === 0) {
       searchSuggestions.innerHTML = `
         <div class="suggestion-item" style="cursor: default; color: var(--text-muted);">
-          No plots found matching "${escapeHtml(query)}"
+          No matches found for "${escapeHtml(query)}" across Site, Village, Family, Farmer, or Plot
         </div>`;
       searchSuggestions.style.display = 'block';
       return;
     }
 
     const frag = document.createDocumentFragment();
-    matches.forEach((p) => {
+
+    // Render Site / Landscape shortcuts first
+    siteMatches.forEach((sm) => {
+      const item = document.createElement('div');
+      item.className = 'suggestion-item suggestion-shortcut';
+      item.innerHTML = `
+        <div class="suggestion-main">
+          <span class="suggestion-title">🗺️ Landscape: ${highlightMatch(sm.site, query)}</span>
+          <span class="suggestion-subtitle">${sm.count.toLocaleString()} registered plots · Click to filter & zoom landscape</span>
+        </div>
+        <span class="suggestion-tag tag-site">Landscape</span>
+      `;
+      item.addEventListener('click', () => {
+        searchSuggestions.style.display = 'none';
+        quickSearchInput.value = sm.site;
+        filterSite.value = sm.site;
+        onSiteChanged();
+        applyFilters();
+        showToast(`Filtered to ${sm.site} landscape (${sm.count.toLocaleString()} plots)`);
+      });
+      frag.appendChild(item);
+    });
+
+    // Render Village shortcuts next
+    villageMatches.forEach((vm) => {
+      const item = document.createElement('div');
+      item.className = 'suggestion-item suggestion-shortcut';
+      item.innerHTML = `
+        <div class="suggestion-main">
+          <span class="suggestion-title">🏘️ Village: ${highlightMatch(vm.village, query)}</span>
+          <span class="suggestion-subtitle">${vm.site} · ${vm.count} plots · Click to filter & zoom village</span>
+        </div>
+        <span class="suggestion-tag tag-village">Village</span>
+      `;
+      item.addEventListener('click', () => {
+        searchSuggestions.style.display = 'none';
+        quickSearchInput.value = `${vm.village}, ${vm.site}`;
+        filterSite.value = vm.site;
+        onSiteChanged();
+        filterVillage.value = vm.village;
+        onVillageChanged();
+        applyFilters();
+        showToast(`Filtered to ${vm.village} in ${vm.site}`);
+      });
+      frag.appendChild(item);
+    });
+
+    // Render Plots
+    plotMatches.forEach((pm) => {
+      const p = pm.plot;
       const item = document.createElement('div');
       item.className = 'suggestion-item';
 
       const familyHighlight = highlightMatch(p.family_id, query);
       const plotHighlight = highlightMatch(p.plot_id, query);
       const villageHighlight = highlightMatch(p.village, query);
+      const siteHighlight = highlightMatch(p.site, query);
+
+      let titleHtml = '';
+      let tagHtml = `<span class="suggestion-tag">Plot ${escapeHtml(p.plot_id)}</span>`;
+
+      if (pm.matchedBy === 'farmer' && pm.farmerName) {
+        const farmerHighlight = highlightMatch(pm.farmerName, query);
+        titleHtml = `<span class="suggestion-title">🧑‍🌾 ${farmerHighlight} · Family ${familyHighlight} (Plot ${plotHighlight})</span>`;
+        tagHtml = `<span class="suggestion-tag tag-farmer">Farmer</span>`;
+      } else {
+        const farmerSnippet = pm.farmerName ? ` · 🧑‍🌾 ${escapeHtml(pm.farmerName)}` : '';
+        titleHtml = `<span class="suggestion-title">Family ${familyHighlight} · Plot ${plotHighlight}${farmerSnippet}</span>`;
+        if (pm.matchedBy === 'village') {
+          tagHtml = `<span class="suggestion-tag tag-village">Village</span>`;
+        } else if (pm.matchedBy === 'site') {
+          tagHtml = `<span class="suggestion-tag tag-site">Site</span>`;
+        }
+      }
 
       item.innerHTML = `
         <div class="suggestion-main">
-          <span class="suggestion-title">Family ${familyHighlight} · Plot ${plotHighlight}</span>
-          <span class="suggestion-subtitle">${villageHighlight}, ${p.site} (${p.area_ha || 0} ha)</span>
+          ${titleHtml}
+          <span class="suggestion-subtitle">${villageHighlight}, ${siteHighlight} (${p.area_ha ? p.area_ha.toFixed(2) : 0} ha)</span>
         </div>
-        <span class="suggestion-tag">Plot ${escapeHtml(p.plot_id)}</span>
+        ${tagHtml}
       `;
 
       item.addEventListener('click', () => {
         searchSuggestions.style.display = 'none';
-        quickSearchInput.value = `${p.family_id} (Plot ${p.plot_id})`;
+        const label = pm.farmerName
+          ? `${p.family_id} (Plot ${p.plot_id} - ${pm.farmerName})`
+          : `${p.family_id} (Plot ${p.plot_id})`;
+        quickSearchInput.value = label;
         selectPlot(p, true);
       });
 

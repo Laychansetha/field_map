@@ -39,21 +39,41 @@
           </div>
         </div>
         
+        <!-- Compact Search Bar -->
+        <div class="search-container">
+          <div class="search-input-wrapper">
+            <svg class="search-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+              <circle cx="11" cy="11" r="8"></circle>
+              <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+            </svg>
+            <input 
+              type="text" 
+              id="quick-search" 
+              placeholder="Search Site, Village, Family ID, Farmer, Plot..." 
+              autocomplete="off" 
+              spellcheck="false"
+            />
+            <button id="btn-clear-search" class="clear-btn" style="display: none;" aria-label="Clear Search">&times;</button>
+          </div>
+          <!-- Live Autocomplete Results -->
+          <div id="search-suggestions" class="suggestions-box" style="display: none;"></div>
+        </div>
+
         <div class="header-actions">
           <button id="btn-export-all" class="icon-btn" title="Export All Inspection Data" aria-label="Export All Data">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+            <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
               <polyline points="7 10 12 15 17 10"></polyline>
               <line x1="12" y1="15" x2="12" y2="3"></line>
             </svg>
           </button>
           <button id="btn-toggle-filters" class="icon-btn" title="Toggle Filters" aria-label="Toggle Filters">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+            <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2">
               <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
             </svg>
           </button>
           <button id="btn-my-location" class="icon-btn" title="My Location" aria-label="My GPS Location">
-            <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+            <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2">
               <circle cx="12" cy="12" r="9"></circle>
               <line x1="12" y1="1" x2="12" y2="5"></line>
               <line x1="12" y1="19" x2="12" y2="23"></line>
@@ -63,36 +83,6 @@
             </svg>
           </button>
         </div>
-      </div>
-
-      <!-- Quick Search Bar -->
-      <div class="search-container">
-        <div class="search-input-wrapper">
-          <svg class="search-icon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="11" cy="11" r="8"></circle>
-            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-          </svg>
-          <input 
-            type="text" 
-            id="quick-search" 
-            placeholder="Search Family ID (e.g. SD041), Plot, or Village..." 
-            autocomplete="off" 
-            spellcheck="false"
-          />
-          <button id="btn-clear-search" class="clear-btn" style="display: none;" aria-label="Clear Search">&times;</button>
-        </div>
-        <!-- Live Autocomplete Results -->
-        <div id="search-suggestions" class="suggestions-box" style="display: none;"></div>
-      </div>
-
-      <!-- Landscape Fast Shortcuts -->
-      <div class="landscape-shortcuts" id="landscape-shortcuts">
-        <button class="site-chip" data-site="Siem Pang">🌾 Siem Pang (2.6k)</button>
-        <button class="site-chip" data-site="Preah Vihear">🌾 Preah Vihear (2.1k)</button>
-        <button class="site-chip" data-site="Lumphat">🌾 Lumphat (694)</button>
-        <button class="site-chip" data-site="Prey Lang">🌾 Prey Lang (412)</button>
-        <button class="site-chip" data-site="Keo Seima">🌾 Keo Seima (250)</button>
-        <button class="site-chip" data-site="Vuen Sai">🌾 Vuen Sai (288)</button>
       </div>
 
       <!-- Filter Dropdown Accordion Panel -->

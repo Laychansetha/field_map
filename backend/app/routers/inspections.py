@@ -9,21 +9,48 @@ from typing import List, Optional
 from ..database import get_db
 from ..models import (
     Inspection, InspectionAnswer, Farmer, Village, Season, Parcel,
-    Subplot, SubplotHarvest, RiceVariety, HouseholdProfile
+    Subplot, SubplotHarvest, RiceVariety, HouseholdProfile, User,
+    Commune, Landscape
 )
 from ..schemas import InspectionCreate
+from .auth import require_staff, require_admin, parse_user_territories
 
 router = APIRouter(prefix="/inspections", tags=["Inspections & Reporting"])
 
 @router.post("/", response_model=dict)
-def submit_inspection(payload: InspectionCreate, db: Session = Depends(get_db)):
+def submit_inspection(
+    payload: InspectionCreate,
+    staff_user: User = Depends(require_staff),
+    db: Session = Depends(get_db)
+):
     """
     Submits or updates an inspection event:
-    1. Persists inspection record and digital signature.
-    2. Updates or creates household profile for that farmer.
-    3. Persists dynamic question answers.
-    4. Upserts subplots and subplot harvests.
+    1. Validates staff authorization and territory boundary scoping.
+    2. Persists inspection record and digital signature.
+    3. Updates or creates household profile for that farmer.
+    4. Persists dynamic question answers.
+    5. Upserts subplots and subplot harvests.
     """
+    # Territory boundary scoping check for field inspectors
+    if staff_user.role in ("inspector", "supervisor"):
+        target_farmer = db.query(Farmer).filter(Farmer.id == payload.farmer_id).first()
+        if target_farmer and target_farmer.village:
+            v = target_farmer.village
+            commune = v.commune
+            landscape = commune.landscape if commune else None
+            land_name = landscape.name if landscape else None
+            assigned_vills, assigned_lands = parse_user_territories(staff_user)
+            if assigned_lands and land_name and land_name not in assigned_lands:
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Access denied: Parcel is in '{land_name}', which is outside your assigned territory ({', '.join(assigned_lands)})."
+                )
+            if assigned_vills and v.id not in assigned_vills:
+                raise HTTPException(
+                    status_code=403,
+                    detail=f"Access denied: Parcel village '{v.name}' is outside your assigned villages."
+                )
+
     season = db.query(Season).filter(Season.code == payload.season_code).first()
     if not season:
         season = Season(code=payload.season_code, name=f"Season {payload.season_code}")
@@ -50,14 +77,17 @@ def submit_inspection(payload: InspectionCreate, db: Session = Depends(get_db)):
         insp.village_rep_name = payload.village_rep_name
         if payload.digital_signature_blob:
             insp.digital_signature_blob = payload.digital_signature_blob
+        if payload.inspection_phase:
+            insp.inspection_phase = payload.inspection_phase
         insp.updated_at = datetime.now(timezone.utc)
     else:
         insp = Inspection(
             season_id=season.id,
             farmer_id=payload.farmer_id,
             parcel_id=payload.parcel_id,
-            inspector_id=payload.inspector_id,
+            inspector_id=staff_user.id,
             inspection_type=payload.inspection_type,
+            inspection_phase=payload.inspection_phase or "phase_1_planting",
             inspection_date=payload.inspection_date,
             status=payload.status,
             recommendation=payload.recommendation,
@@ -67,6 +97,21 @@ def submit_inspection(payload: InspectionCreate, db: Session = Depends(get_db)):
         )
         db.add(insp)
         db.flush()
+
+    # Track Phase Milestones
+    today = date.today()
+    if payload.inspection_phase == "phase_1_planting" or payload.phase_1_completed:
+        insp.phase_1_completed = True
+        if not insp.phase_1_date:
+            insp.phase_1_date = today
+    if payload.inspection_phase == "phase_2_harvest" or payload.phase_2_completed:
+        insp.phase_2_completed = True
+        if not insp.phase_2_date:
+            insp.phase_2_date = today
+    if payload.inspection_phase in ("phase_3_post_harvest", "phase_final") or payload.phase_3_completed:
+        insp.phase_3_completed = True
+        if not insp.phase_3_date:
+            insp.phase_3_date = today
         
     # Save Household Profile
     if payload.farmer_profile:
@@ -215,7 +260,7 @@ def export_farmer_csv(
     # Headers
     writer.writerow([
         "Season", "Landscape", "Commune", "Village", "Family_ID", "Head_of_Family",
-        "Gender", "Ethnicity", "Compliance_Status", "Parcel_Code", "GIS_Area_Ha",
+        "Gender", "Ethnicity", "Farmer_Status", "Compliance_Status", "Parcel_Code", "Land_Organic_Status", "GIS_Area_Ha",
         "Land_Tenure", "Irrigation", "Subplot_Code", "Rice_Variety", "Subplot_Pct",
         "Subplot_Area_Ha", "Planting_Method", "Seed_Qty_Kg", "Expected_Yield_Kg",
         "Harvest_Actual_Kg", "Sale_Kg", "Household_Kg", "Seed_Saved_Kg",
@@ -225,9 +270,12 @@ def export_farmer_csv(
     commune_name = village.commune.name if village.commune else ""
     landscape_name = village.commune.landscape.name if village.commune and village.commune.landscape else ""
     now_str = date.today().isoformat()
+    farmer_status_val = getattr(farmer, 'farmer_status', None) or "Existing"
+    farmer_comp_val = farmer.compliance_status or "Compliance"
     
     for p in parcels:
         subplots = []
+        land_status_val = getattr(p, 'land_status', None) or "Organic"
         if season:
             subplots = db.query(Subplot).filter(
                 Subplot.parcel_id == p.id,
@@ -238,8 +286,8 @@ def export_farmer_csv(
             # Row without subplots
             writer.writerow([
                 season_code, landscape_name, commune_name, village.name, farmer.family_code,
-                farmer.head_name, farmer.gender, farmer.ethnicity, farmer.compliance_status,
-                p.parcel_code or "", p.gis_area_ha, p.land_tenure, p.irrigation_type,
+                farmer.head_name, farmer.gender, farmer.ethnicity, farmer_status_val, farmer_comp_val,
+                p.parcel_code or "", land_status_val, p.gis_area_ha, p.land_tenure, p.irrigation_type,
                 "", "", "", "", "", "", "", "", "", "", "", "", "", "", "", now_str
             ])
         else:
@@ -254,8 +302,8 @@ def export_farmer_csv(
                 
                 writer.writerow([
                     season_code, landscape_name, commune_name, village.name, farmer.family_code,
-                    farmer.head_name, farmer.gender, farmer.ethnicity, farmer.compliance_status,
-                    p.parcel_code or "", p.gis_area_ha, p.land_tenure, p.irrigation_type,
+                    farmer.head_name, farmer.gender, farmer.ethnicity, farmer_status_val, farmer_comp_val,
+                    p.parcel_code or "", land_status_val, p.gis_area_ha, p.land_tenure, p.irrigation_type,
                     s.subplot_code, var_name, s.percentage_of_main, s.calculated_area_ha,
                     s.planting_method, s.seed_qty_kg, s.expected_yield_kg,
                     act_kg, sale_kg, house_kg, seed_kg, method,
@@ -264,6 +312,184 @@ def export_farmer_csv(
                 
     output.seek(0)
     filename = f"ibis_inspection_{village.name}_{farmer.family_code}_{season_code}_{now_str}.csv".replace(" ", "_")
+    return StreamingResponse(
+        iter([output.getvalue()]),
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+@router.get("/by-parcel/{parcel_id}", response_model=dict)
+def get_inspection_by_parcel(
+    parcel_id: str,
+    season_code: str = Query("2026"),
+    staff_user: User = Depends(require_staff),
+    db: Session = Depends(get_db)
+):
+    """Retrieves existing inspection progress, answers, and phase milestone status for a parcel."""
+    season = db.query(Season).filter(Season.code == season_code).first()
+    if not season:
+        return {"inspection": None}
+        
+    insp = db.query(Inspection).filter(
+        Inspection.parcel_id == parcel_id,
+        Inspection.season_id == season.id
+    ).first()
+    
+    if not insp:
+        return {"inspection": None}
+        
+    # Collate answers
+    answers_dict = {}
+    for ans in insp.answers:
+        try:
+            answers_dict[ans.question_key] = json.loads(ans.answer_value_json)
+        except Exception:
+            answers_dict[ans.question_key] = ans.answer_value_json
+            
+    return {
+        "inspection": {
+            "id": insp.id,
+            "season_code": season_code,
+            "farmer_id": insp.farmer_id,
+            "parcel_id": insp.parcel_id,
+            "inspection_phase": insp.inspection_phase,
+            "phase_1_completed": insp.phase_1_completed,
+            "phase_2_completed": insp.phase_2_completed,
+            "phase_3_completed": insp.phase_3_completed,
+            "phase_1_date": insp.phase_1_date.isoformat() if insp.phase_1_date else None,
+            "phase_2_date": insp.phase_2_date.isoformat() if insp.phase_2_date else None,
+            "phase_3_date": insp.phase_3_date.isoformat() if insp.phase_3_date else None,
+            "inspection_date": insp.inspection_date.isoformat() if insp.inspection_date else None,
+            "status": insp.status,
+            "recommendation": insp.recommendation,
+            "inspector_notes": insp.inspector_notes,
+            "village_rep_name": insp.village_rep_name,
+            "answers": answers_dict,
+            "is_locked": insp.is_locked
+        }
+    }
+
+@router.get("/export/master-ics-csv")
+def export_master_ics_csv(
+    landscape_name: Optional[str] = Query(None),
+    village_name: Optional[str] = Query(None),
+    season_code: str = Query("2026"),
+    phase: Optional[str] = Query(None),
+    admin_user: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """
+    Master ICS Data Center export:
+    Streams a complete, multi-filter CSV audit dataset containing farmer identity,
+    parcel organic baseline, subplots, harvest volumes, post-harvest compliance,
+    and milestone phase statuses.
+    """
+    season = db.query(Season).filter(Season.code == season_code).first()
+    
+    from sqlalchemy.orm import joinedload
+    
+    # Batch-load all matching parcels with full owner hierarchy in a single SQL query
+    q = db.query(Parcel).join(Farmer).join(Village)
+    if village_name:
+        q = q.filter(Village.name.ilike(village_name.strip()))
+    elif landscape_name:
+        q = q.join(Commune, Village.commune_id == Commune.id).join(Landscape, Commune.landscape_id == Landscape.id)
+        q = q.filter(Landscape.name.ilike(landscape_name.strip()))
+        
+    parcels = q.options(
+        joinedload(Parcel.farmer).joinedload(Farmer.village).joinedload(Village.commune).joinedload(Commune.landscape)
+    ).all()
+    
+    output = io.StringIO()
+    writer = csv.writer(output)
+    
+    # Header row
+    writer.writerow([
+        "Season", "Landscape", "Commune", "Village", "Family_ID", "Head_of_Family",
+        "Gender", "Farmer_Status", "Compliance_Status", "Parcel_Code", "Land_Organic_Status",
+        "GIS_Area_Ha", "Subplot_Code", "Rice_Variety", "Subplot_Pct", "Subplot_Area_Ha",
+        "Planting_Date", "Expected_Yield_Kg", "Phase_1_Completed", "Phase_1_Date",
+        "Harvest_Actual_Kg", "Sold_Kg", "Household_Kg", "Seed_Saved_Kg", "Threshing_Method",
+        "Phase_2_Completed", "Phase_2_Date", "Recommendation", "Inspector_Notes",
+        "Phase_3_Completed", "Phase_3_Date", "Audit_Status"
+    ])
+    
+    now_str = date.today().isoformat()
+    
+    # Pre-fetch all inspections and subplots for this season into memory maps to avoid N+1 query overhead
+    insp_by_parcel = {}
+    subplots_by_parcel = {}
+    if season:
+        for insp in db.query(Inspection).filter(Inspection.season_id == season.id).all():
+            if insp.parcel_id:
+                insp_by_parcel[insp.parcel_id] = insp
+        for sub in db.query(Subplot).filter(Subplot.season_id == season.id).all():
+            subplots_by_parcel.setdefault(sub.parcel_id, []).append(sub)
+
+    for p in parcels:
+        f = p.farmer
+        if not f:
+            continue
+        v = f.village
+        commune_name = v.commune.name if v and v.commune else ""
+        landscape_str = v.commune.landscape.name if v and v.commune and v.commune.landscape else ""
+        f_status = getattr(f, 'farmer_status', None) or "Existing"
+        f_comp = f.compliance_status or "Compliance"
+        land_status_val = getattr(p, 'land_status', None) or "Organic"
+        
+        # Fetch inspection from pre-indexed map
+        insp = insp_by_parcel.get(p.id)
+            
+        # Filter by phase if specified
+        if phase == "phase_1" and (not insp or not insp.phase_1_completed):
+            continue
+        elif phase == "phase_2" and (not insp or not insp.phase_2_completed):
+            continue
+        elif phase == "phase_3" and (not insp or not insp.phase_3_completed):
+            continue
+            
+        p1_done = "YES" if (insp and insp.phase_1_completed) else "NO"
+        p1_date = insp.phase_1_date.isoformat() if (insp and insp.phase_1_date) else ""
+        p2_done = "YES" if (insp and insp.phase_2_completed) else "NO"
+        p2_date = insp.phase_2_date.isoformat() if (insp and insp.phase_2_date) else ""
+        p3_done = "YES" if (insp and insp.phase_3_completed) else "NO"
+        p3_date = insp.phase_3_date.isoformat() if (insp and insp.phase_3_date) else ""
+        recom = insp.recommendation if insp else "Pending"
+        notes = insp.inspector_notes if insp else ""
+        audit_stat = insp.status if insp else "Uninspected"
+        
+        subplots = subplots_by_parcel.get(p.id, [])
+                
+        if not subplots:
+            writer.writerow([
+                season_code, landscape_str, commune_name, v.name if v else "", f.family_code,
+                f.head_name, f.gender, f_status, f_comp, p.parcel_code or "", land_status_val,
+                p.gis_area_ha, "", "", "", "", "", "", p1_done, p1_date,
+                "", "", "", "", "", p2_done, p2_date, recom, notes, p3_done, p3_date, audit_stat
+            ])
+        else:
+            for s in subplots:
+                var_name = s.variety.name_en if s.variety else ""
+                h = s.harvest
+                act_kg = h.actual_production_kg if h else ""
+                sale_kg = h.for_sale_kg if h else ""
+                house_kg = h.consumption_kg if h else ""
+                seed_kg = h.seed_kept_kg if h else ""
+                method = h.threshing_method if h else ""
+                p_date = s.planting_date.isoformat() if s.planting_date else ""
+                
+                writer.writerow([
+                    season_code, landscape_str, commune_name, v.name if v else "", f.family_code,
+                    f.head_name, f.gender, f_status, f_comp, p.parcel_code or "", land_status_val,
+                    p.gis_area_ha, s.subplot_code, var_name, s.percentage_of_main, s.calculated_area_ha,
+                    p_date, s.expected_yield_kg, p1_done, p1_date,
+                    act_kg, sale_kg, house_kg, seed_kg, method,
+                    p2_done, p2_date, recom, notes, p3_done, p3_date, audit_stat
+                ])
+                    
+    output.seek(0)
+    target_tag = (village_name or landscape_name or "Nationwide").replace(" ", "_")
+    filename = f"ibis_master_ics_{target_tag}_{season_code}_{now_str}.csv"
     return StreamingResponse(
         iter([output.getvalue()]),
         media_type="text/csv",

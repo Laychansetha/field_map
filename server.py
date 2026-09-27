@@ -1,50 +1,41 @@
 #!/usr/bin/env python3
 """
-Threaded local development and testing server for Ibis Rice Field Navigator.
-Serves the 'public/' directory with proper MIME types for GeoJSON, PWA manifest, etc.
+IRCC Enterprise Traceability & Field Management Platform Server.
+Serves the FastAPI backend API and the static PWA frontend on port 8080.
 """
-import http.server
-import socketserver
 import os
 import sys
 
 PORT = 8080
-DIRECTORY = os.path.join(os.path.dirname(__file__), "public")
-
-class CustomHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, directory=DIRECTORY, **kwargs)
-
-    def end_headers(self):
-        self.send_header("Access-Control-Allow-Origin", "*")
-        self.send_header("Cache-Control", "no-cache")
-        super().end_headers()
-
-    def guess_type(self, path):
-        if path.endswith(".webmanifest"):
-            return "application/manifest+json"
-        if path.endswith(".geojson"):
-            return "application/geo+json"
-        if path.endswith(".json"):
-            return "application/json"
-        return super().guess_type(path)
-
-class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
-    allow_reuse_address = True
-    daemon_threads = True
 
 def main():
     os.chdir(os.path.dirname(__file__))
-    with ThreadedTCPServer(("", PORT), CustomHTTPRequestHandler) as httpd:
-        print(f"=======================================================", flush=True)
-        print(f"  IBIS RICE FIELD NAVIGATOR SERVER RUNNING", flush=True)
-        print(f"  Local URL:   http://localhost:{PORT}", flush=True)
-        print(f"  Serving dir: {DIRECTORY}", flush=True)
-        print(f"=======================================================", flush=True)
-        try:
+    print("=======================================================", flush=True)
+    print("  IRCC ENTERPRISE TRACEABILITY & FIELD PLATFORM", flush=True)
+    print(f"  Local Web App: http://localhost:{PORT}", flush=True)
+    print(f"  API Swagger:   http://localhost:{PORT}/docs", flush=True)
+    print(f"  Health Check:  http://localhost:{PORT}/api/v1/health", flush=True)
+    print("=======================================================", flush=True)
+    
+    try:
+        import uvicorn
+        uvicorn.run("backend.app.main:app", host="0.0.0.0", port=PORT, reload=False)
+    except Exception as e:
+        print(f"Starting fallback HTTP server due to: {e}", flush=True)
+        import http.server
+        import socketserver
+        directory = os.path.join(os.path.dirname(__file__), "public")
+        
+        class CustomHTTPRequestHandler(http.server.SimpleHTTPRequestHandler):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, directory=directory, **kwargs)
+            def end_headers(self):
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.send_header("Cache-Control", "no-cache")
+                super().end_headers()
+                
+        with socketserver.TCPServer(("", PORT), CustomHTTPRequestHandler) as httpd:
             httpd.serve_forever()
-        except KeyboardInterrupt:
-            print("\nShutting down server...", flush=True)
 
 if __name__ == "__main__":
     main()

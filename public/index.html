@@ -3,24 +3,29 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <meta name="theme-color" content="#13382c" />
+  <meta name="theme-color" content="#061a12" />
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-  <meta name="apple-mobile-web-app-title" content="Ibis Navigator" />
-  <title>Ibis Rice Plot Navigator | Field GPS & Directions</title>
+  <meta name="apple-mobile-web-app-title" content="Ibis Traceability" />
+  <title>Ibis Rice | Origin &amp; Conservation Traceability Portal</title>
   
   <link rel="manifest" href="manifest.webmanifest" />
   <link rel="icon" type="image/png" href="icons/favicon.png" />
   <link rel="apple-touch-icon" href="icons/icon-192.png" />
+
+  <!-- Google Fonts: Outfit for Headings & Plus Jakarta Sans for UI -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@500;600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   
   <!-- Bundled Local Leaflet for 100% Offline Use -->
   <link rel="stylesheet" href="vendor/leaflet.css" />
   <script src="vendor/leaflet.js"></script>
 
   <!-- App Styles -->
-  <link rel="stylesheet" href="app.css" />
+  <link rel="stylesheet" href="app.css?v=2026.17" />
 </head>
-<body>
+<body class="role-public">
   <div id="app-container">
     <!-- Top Header / App Bar -->
     <header id="top-bar">
@@ -32,23 +37,22 @@
             </svg>
           </div>
           <div class="brand-text">
-            <h1>Ibis Rice Navigator</h1>
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <span class="badge offline-badge" id="offline-badge">
-                <span class="status-dot"></span> Offline Ready
-              </span>
-              <div class="season-selector-wrapper">
-                <select id="season-selector" class="season-select" title="Active Inspection Season">
-                  <option value="2026" selected>Season 2026</option>
-                  <option value="2027">Season 2027</option>
-                  <option value="2025">Season 2025 (Archive)</option>
-                </select>
-              </div>
+            <div class="brand-single-line">
+              <h1 class="brand-portal-title">Ibis Rice <span class="brand-badge-trace">Traceability</span></h1>
+              <span class="brand-title-dot">·</span>
+              <span class="brand-tagline-inline">Origin &amp; Conservation Portal</span>
+            </div>
+            <div class="season-selector-wrapper staff-only" id="season-selector-wrapper" style="display: none;">
+              <select id="season-selector" class="season-select" title="Active Inspection Season">
+                <option value="2026" selected>Season 2026</option>
+                <option value="2027">Season 2027</option>
+                <option value="2025">Season 2025 (Archive)</option>
+              </select>
             </div>
           </div>
         </div>
         
-        <!-- Compact Search Bar -->
+        <!-- Compact Search Bar with Contextual Guidance -->
         <div class="search-container">
           <div class="search-input-wrapper">
             <svg class="search-icon" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
@@ -58,7 +62,7 @@
             <input 
               type="text" 
               id="quick-search" 
-              placeholder="Search Site, Village, Family ID, Farmer, Plot..." 
+              placeholder="🔍 Trace your rice: Enter Family ID (e.g. PR127), Village, Landscape..." 
               autocomplete="off" 
               spellcheck="false"
             />
@@ -69,7 +73,18 @@
         </div>
 
         <div class="header-actions">
-          <button id="btn-export-all" class="icon-btn" title="Export All Inspection Data" aria-label="Export All Data">
+          <!-- Admin-only GIS Update Button -->
+          <button id="btn-annual-gis" class="action-pill-btn admin-only" title="Annual GIS GeoJSON Ingestion & Diff" style="display: none;">
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 10V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l2-1.14"></path>
+              <polyline points="16.5 9.4 7.55 4.24"></polyline>
+              <polyline points="3.29 7 12 12.01 20.72 7"></polyline>
+              <line x1="12" y1="22.08" x2="12" y2="12"></line>
+            </svg>
+            <span>GIS Update</span>
+          </button>
+
+          <button id="btn-export-all" class="icon-btn staff-only" title="Export All Inspection Data" aria-label="Export All Data" style="display: none;">
             <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" stroke-width="2">
               <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
               <polyline points="7 10 12 15 17 10"></polyline>
@@ -91,54 +106,346 @@
               <circle cx="12" cy="12" r="3" fill="currentColor"></circle>
             </svg>
           </button>
-        </div>
-      </div>
 
-      <!-- Filter Dropdown Accordion Panel -->
-      <div id="filter-panel" class="filter-panel closed">
-        <div class="filter-grid">
-          <div class="filter-group">
-            <label for="filter-site">Site / Landscape</label>
-            <select id="filter-site">
-              <option value="">All Sites (6,427 plots)</option>
-            </select>
-          </div>
-          
-          <div class="filter-group">
-            <label for="filter-village">Village</label>
-            <select id="filter-village" disabled>
-              <option value="">All Villages</option>
-            </select>
-          </div>
-          
-          <div class="filter-group">
-            <label for="filter-family">Family ID</label>
-            <select id="filter-family" disabled>
-              <option value="">All Families</option>
-            </select>
-          </div>
-
-          <div class="filter-group">
-            <label for="filter-plot">Plot</label>
-            <select id="filter-plot" disabled>
-              <option value="">All Plots</option>
-            </select>
-          </div>
-        </div>
-
-        <div class="filter-actions">
-          <span id="filter-status-text">6,427 plots available</span>
-          <div class="filter-buttons">
-            <button id="btn-reset-filters" class="secondary-btn">Reset</button>
-            <button id="btn-apply-filters" class="primary-btn">View on Map</button>
+          <!-- User Authentication Button & Role Profile Menu -->
+          <div class="user-auth-wrapper" id="user-auth-wrapper">
+            <button id="btn-open-auth" class="auth-trigger-btn" title="Sign In (Field Officers & Management)">
+              <span class="auth-icon-key">🔑</span>
+              <span id="auth-btn-label">Sign In</span>
+            </button>
+            
+            <div id="user-profile-menu" class="user-profile-menu" style="display: none;">
+              <div class="user-profile-header">
+                <div class="user-avatar-circle" id="user-avatar">👤</div>
+                <div class="user-info-text">
+                  <strong id="user-display-name">Field Officer</strong>
+                  <span id="user-display-role" class="user-role-badge role-badge-inspector">Field Inspector</span>
+                </div>
+              </div>
+              <div class="user-menu-items">
+                <button id="menu-btn-gis" class="user-menu-item admin-only" style="display: none;">
+                  <span class="item-icon">🗺️</span>
+                  <span>Annual GIS Ingestion</span>
+                </button>
+                <button id="menu-btn-export" class="user-menu-item">
+                  <span class="item-icon">📥</span>
+                  <span>Export CSV Data</span>
+                </button>
+                <div class="menu-divider"></div>
+                <button id="menu-btn-signout" class="user-menu-item signout-btn">
+                  <span class="item-icon">🚪</span>
+                  <span>Sign Out</span>
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
     </header>
 
+    <!-- Filter Dropdown Overlay Panel -->
+    <div id="filter-panel" class="filter-panel closed">
+      <div class="filter-panel-header">
+        <div class="filter-panel-title">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+          </svg>
+          <span>Filter Field Plots by Landscape</span>
+        </div>
+        <button id="btn-close-filter-panel" class="filter-close-btn" title="Close Filter Panel" aria-label="Close Filter Panel">&times;</button>
+      </div>
+
+      <div class="filter-grid">
+        <div class="filter-group">
+          <label for="filter-site">Site / Landscape</label>
+          <select id="filter-site">
+            <option value="">All Sites (6,427 plots)</option>
+          </select>
+        </div>
+        
+        <div class="filter-group">
+          <label for="filter-village">Village</label>
+          <select id="filter-village" disabled>
+            <option value="">All Villages</option>
+          </select>
+        </div>
+        
+        <div class="filter-group">
+          <label for="filter-family">Family ID</label>
+          <select id="filter-family" disabled>
+            <option value="">All Families</option>
+          </select>
+        </div>
+
+        <div class="filter-group">
+          <label for="filter-plot">Plot</label>
+          <select id="filter-plot" disabled>
+            <option value="">All Plots</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="filter-actions">
+        <span id="filter-status-text">6,427 plots available</span>
+        <div class="filter-buttons">
+          <button id="btn-reset-filters" class="secondary-btn">Reset</button>
+          <button id="btn-apply-filters" class="primary-btn">View on Map</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Map Area -->
     <main id="map-wrapper">
       <div id="map"></div>
+
+      <!-- Floating Hero Discovery & Conservation Card for General Visitors -->
+      <div id="hero-discovery-card" class="hero-discovery-card">
+        <div class="hero-card-header">
+          <div class="hero-title-group">
+            <span class="hero-eyebrow">🌾 IRCC CONSERVATION &amp; TRACEABILITY</span>
+            <h2 class="hero-title">Track Your Rice to Its Sanctuary</h2>
+          </div>
+          <button id="btn-toggle-hero-card" class="hero-toggle-btn" title="Minimize / Expand Overview" aria-label="Toggle Overview">
+            <span class="toggle-icon">−</span>
+          </button>
+        </div>
+
+        <div class="hero-card-body" id="hero-card-body">
+          <p class="hero-desc">
+            Every grain of Ibis Rice is organically grown by Cambodian conservation families who protect the Critically Endangered Giant Ibis with 100% deforestation-free agriculture.
+          </p>
+
+          <!-- Key Impact Metrics Counter -->
+          <div class="hero-stats-row">
+            <div class="hero-stat-box">
+              <strong class="stat-number">6,427</strong>
+              <span class="stat-label">Organic Plots</span>
+            </div>
+            <div class="hero-stat-box">
+              <strong class="stat-number" id="hero-stat-sanctuaries">6</strong>
+              <span class="stat-label">Sanctuaries</span>
+            </div>
+            <div class="hero-stat-box">
+              <strong class="stat-number">100%</strong>
+              <span class="stat-label">Wildlife Friendly</span>
+            </div>
+          </div>
+
+          <!-- Quick Landscape Explorer Chips (Dynamically Generated from Plot Data) -->
+          <div class="hero-explorer-section">
+            <span class="explorer-label">Quick Explore Sanctuaries:</span>
+            <div class="landscape-chips-grid" id="landscape-chips-grid">
+              <!-- Dynamically populated from unique site values in plot data -->
+            </div>
+          </div>
+
+          <div class="hero-search-tip">
+            <span class="tip-icon">💡</span>
+            <span>Have an Ibis Rice pack? Enter the <b>Family Code</b> (e.g. <code>PR127</code> or <code>SB049</code>) above to view your farmer.</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- =======================================================
+           LEFT-SIDE COLLAPSIBLE INSPECTOR COMMAND PANEL (Staff Only)
+           ======================================================= -->
+      <aside id="inspector-sidebar" class="inspector-sidebar staff-only" aria-label="Field Inspector Panel" style="display: none;">
+        <div class="inspector-sidebar-inner">
+          <!-- 1. Header: Branding & Hide Panel Button -->
+          <div class="inspector-sidebar-header">
+            <div class="inspector-brand">
+              <div class="inspector-brand-icon">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+                  <polygon points="12 2 19 21 12 17 5 21 12 2" fill="#E4A834" stroke="#D18E1E"></polygon>
+                </svg>
+              </div>
+              <div class="inspector-brand-text">
+                <div class="inspector-brand-title">
+                  <span>Ibis Rice</span>
+                  <span class="inspector-badge-trace">Traceability</span>
+                </div>
+                <div class="inspector-brand-tagline">Origin &amp; Conservation Portal</div>
+              </div>
+            </div>
+            <button id="btn-collapse-inspector-sidebar" class="inspector-collapse-btn" title="Hide Panel (Full Map View)" aria-label="Collapse panel">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.5">
+                <polyline points="15 18 9 12 15 6"></polyline>
+              </svg>
+              <span>Hide</span>
+            </button>
+          </div>
+
+          <!-- 2. Officer Identity & Sync Status Strip -->
+          <div class="inspector-officer-strip">
+            <div class="officer-meta">
+              <div class="officer-avatar" id="sidebar-officer-avatar">🧑‍🌾</div>
+              <div class="officer-details">
+                <div class="officer-name" id="sidebar-officer-name">Field Officer</div>
+                <div class="officer-role-badge" id="sidebar-officer-role">Field Inspector</div>
+              </div>
+            </div>
+            <div class="officer-status-box">
+              <span class="sidebar-sync-pill" id="sidebar-sync-pill">🟢 Online</span>
+              <button id="btn-sidebar-signout" class="sidebar-signout-btn" title="Sign Out & Return to Public View">
+                <span>Sign Out</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- 2.5 Assigned Territory Banner -->
+          <div class="inspector-territory-banner" id="sidebar-territory-banner">
+            <div class="territory-header">
+              <span class="territory-icon">📍</span>
+              <span class="territory-label">Assigned Territory</span>
+            </div>
+            <div class="territory-details" id="sidebar-territory-details">
+              <strong id="sidebar-territory-name">Nationwide (All Zones)</strong>
+              <span class="territory-count-badge" id="sidebar-territory-count">5,142 Plots</span>
+            </div>
+          </div>
+
+          <!-- 3. Scrollable Inspector Workspace -->
+          <div class="inspector-sidebar-body">
+            <!-- Season Selection -->
+            <div class="sidebar-widget">
+              <label class="sidebar-widget-label" for="sidebar-season-select">
+                <span class="widget-icon">📅</span> Inspection Season
+              </label>
+              <div class="sidebar-season-select-wrapper">
+                <select id="sidebar-season-select" class="sidebar-select" title="Active Season">
+                  <option value="2026" selected>Season 2026 (Active)</option>
+                  <option value="2027">Season 2027 (Upcoming)</option>
+                  <option value="2025">Season 2025 (Archive)</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Comprehensive Inspector Search -->
+            <div class="sidebar-widget">
+              <label class="sidebar-widget-label" for="sidebar-search-input">
+                <span class="widget-icon">🔍</span> Search Field Plots
+              </label>
+              <div class="sidebar-search-box">
+                <div class="sidebar-search-input-wrap">
+                  <svg class="sidebar-search-icon" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                  </svg>
+                  <input 
+                    type="text" 
+                    id="sidebar-search-input" 
+                    placeholder="Search Site, Village, Family ID, Plot..." 
+                    autocomplete="off" 
+                    spellcheck="false" 
+                  />
+                  <button id="btn-clear-sidebar-search" class="sidebar-clear-search" style="display: none;" aria-label="Clear Search">&times;</button>
+                </div>
+                <div id="sidebar-search-suggestions" class="sidebar-suggestions-dropdown" style="display: none;"></div>
+              </div>
+            </div>
+
+            <!-- Primary Inspector Action Tools -->
+            <div class="sidebar-widget">
+              <div class="sidebar-widget-label"><span class="widget-icon">⚡</span> Field Tools &amp; Actions</div>
+              <div class="sidebar-actions-grid">
+                <button id="btn-sidebar-my-location" class="sidebar-action-btn primary-action" title="GPS device position">
+                  <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2">
+                    <circle cx="12" cy="12" r="9"></circle>
+                    <line x1="12" y1="1" x2="12" y2="5"></line>
+                    <line x1="12" y1="19" x2="12" y2="23"></line>
+                    <line x1="1" y1="12" x2="5" y2="12"></line>
+                    <line x1="19" y1="12" x2="23" y2="12"></line>
+                    <circle cx="12" cy="12" r="3" fill="currentColor"></circle>
+                  </svg>
+                  <span>My GPS Location</span>
+                </button>
+
+                <button id="btn-sidebar-export" class="sidebar-action-btn" title="Export all inspection records to CSV">
+                  <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="7 10 12 15 17 10"></polyline>
+                    <line x1="12" y1="15" x2="12" y2="3"></line>
+                  </svg>
+                  <span>Export Inspection Data</span>
+                </button>
+
+                <button id="btn-sidebar-filter" class="sidebar-action-btn" title="Toggle Landscape & Village filter panel">
+                  <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2">
+                    <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+                  </svg>
+                  <span>Filter by Landscape</span>
+                </button>
+
+                <button id="btn-sidebar-admin-workspace" class="sidebar-action-btn admin-only" title="Open Admin & Territory Workspace" style="display: none;">
+                  <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+                    <circle cx="9" cy="7" r="4"></circle>
+                    <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+                    <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+                  </svg>
+                  <span>Admin Workspace</span>
+                </button>
+
+                <button id="btn-sidebar-gis" class="sidebar-action-btn admin-only" title="Annual GeoJSON Ingestion & Diff (Admin)" style="display: none;">
+                  <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 10V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l2-1.14"></path>
+                    <polyline points="16.5 9.4 7.55 4.24"></polyline>
+                    <polyline points="3.29 7 12 12.01 20.72 7"></polyline>
+                    <line x1="12" y1="22.08" x2="12" y2="12"></line>
+                  </svg>
+                  <span>GIS GeoJSON Diff</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Inspection Progress Metrics for Active Season -->
+            <div class="sidebar-widget">
+              <div class="sidebar-widget-label">
+                <span class="widget-icon">📊</span> Progress Status (<span id="sidebar-kpi-season">2026</span>)
+              </div>
+              <div class="sidebar-kpi-row">
+                <div class="kpi-mini-card kpi-comp">
+                  <strong class="kpi-val" id="sidebar-kpi-completed">0</strong>
+                  <span class="kpi-lbl">🟢 Completed</span>
+                </div>
+                <div class="kpi-mini-card kpi-prog">
+                  <strong class="kpi-val" id="sidebar-kpi-inprogress">0</strong>
+                  <span class="kpi-lbl">🟡 In Progress</span>
+                </div>
+                <div class="kpi-mini-card kpi-pend">
+                  <strong class="kpi-val" id="sidebar-kpi-pending">6,427</strong>
+                  <span class="kpi-lbl">🔵 Pending</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Active Selected Plot Quick Inspector Dock -->
+            <div class="sidebar-widget" id="sidebar-selected-plot-box" style="display: none;">
+              <div class="sidebar-widget-label"><span class="widget-icon">🌾</span> Current Plot</div>
+              <div class="sidebar-plot-card">
+                <div class="plot-card-header">
+                  <span class="plot-family-label" id="sidebar-sel-family">Family --</span>
+                  <span class="plot-area-pill" id="sidebar-sel-area">-- ha</span>
+                </div>
+                <div class="plot-card-meta" id="sidebar-sel-meta">Plot -- · Village</div>
+                <div class="plot-card-actions">
+                  <button id="btn-sidebar-view-form" class="sidebar-primary-btn">
+                    📝 Open 5-Stage Form
+                  </button>
+                  <button id="btn-sidebar-sketch-subplot" class="sidebar-secondary-btn">
+                    ✏️ Sketch Subplot
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Floating Button to Re-Open System Administration / Inspector Sidebar When Collapsed -->
+      <button id="btn-floating-inspector-menu" class="floating-inspector-menu-btn staff-only" title="Expand System Administration Panel" aria-label="Open Admin Panel" style="display: none;">
+        <span class="menu-icon" id="floating-menu-icon">☰</span>
+      </button>
 
       <!-- Floating Map Controls -->
       <div class="floating-controls">
@@ -158,8 +465,8 @@
         </button>
       </div>
 
-      <!-- Map Inspection Status Legend (Current Season) -->
-      <div id="map-status-legend" class="map-status-legend" aria-label="Inspection Progress">
+      <!-- Map Inspection Status Legend (Current Season) - Staff Only -->
+      <div id="map-status-legend" class="map-status-legend staff-only" aria-label="Inspection Progress" style="display: none;">
         <div class="legend-header">
           <span class="legend-season-badge" id="legend-season-badge">2026</span> Inspection
         </div>
@@ -253,6 +560,10 @@
               <div class="plot-title-meta">
                 <span class="plot-eyebrow" id="card-site">Keo Seima · Srea Chhuk</span>
                 <h2 id="card-heading">Family <span id="card-family">SD041</span> · Plot <span id="card-plot">11</span></h2>
+                <div class="plot-identity-sub" id="card-identity-sub">
+                  <span class="sub-village-pill" id="card-village-pill">Village: --</span>
+                  <span class="sub-status-pill status-saved" id="card-inspection-state-pill">🟢 Inspected</span>
+                </div>
               </div>
               <div class="plot-header-right">
                 <div class="plot-area-badge" id="card-area-badge">
@@ -268,8 +579,61 @@
               </div>
             </div>
 
-            <!-- ===== 5-STAGE INSPECTION WORKFLOW TAB BAR ===== -->
-            <div class="drawer-tabs" id="drawer-tab-bar" role="tablist">
+            <!-- Traceability & Origin Overview Panel (Always visible to Public & Staff) -->
+            <div class="traceability-origin-card" id="traceability-origin-card">
+              <div class="origin-tag-row">
+                <span class="origin-variety-pill" id="trace-variety-pill">🌾 Certified Organic Phka Rumduol</span>
+                <span class="origin-status-pill status-pill-completed staff-only" id="traceability-status-badge" style="display: none;">🟢 Verified Compliant (2026)</span>
+              </div>
+              <div class="origin-trust-badges">
+                <span class="trust-badge" title="Giant Ibis habitat conservation zone">🦅 Wildlife Friendly</span>
+                <span class="trust-badge" title="Verified zero forest clearance">🌳 Zero-Deforestation</span>
+                <span class="trust-badge" title="Certified EU Organic & USDA NOP">🇪🇺 EU / USDA Organic</span>
+              </div>
+              <div class="origin-meta-grid">
+                <div class="origin-meta-item">
+                  <span class="meta-label">Village / Community</span>
+                  <strong class="meta-val" id="trace-village-name">Sre Andaol</strong>
+                </div>
+                <div class="origin-meta-item">
+                  <span class="meta-label">GPS Coordinates</span>
+                  <strong class="meta-val" id="trace-coords">12.3044, 106.6081</strong>
+                </div>
+                <div class="origin-meta-item origin-meta-landscape">
+                  <span class="meta-label">Conservation Landscape</span>
+                  <strong class="meta-val" id="trace-landscape-name">Keo Seima Wildlife Sanctuary</strong>
+                </div>
+              </div>
+
+              <!-- Production & Harvest Traceability (Visible on Click / Search) -->
+              <div class="origin-production-panel" id="origin-production-panel">
+                <div class="prod-panel-title">Production &amp; Harvest Traceability</div>
+                <div class="origin-prod-grid">
+                  <div class="prod-metric-card">
+                    <span class="prod-metric-label">Expected Production</span>
+                    <strong class="prod-metric-value" id="trace-expected-prod">--</strong>
+                    <span class="prod-metric-sub" id="trace-expected-rate">Est. 1.5 MT/ha</span>
+                  </div>
+                  <div class="prod-metric-card">
+                    <span class="prod-metric-label">Actual Harvest</span>
+                    <strong class="prod-metric-value" id="trace-actual-harvest">--</strong>
+                    <span class="prod-metric-sub" id="trace-harvest-status">Season 2026</span>
+                  </div>
+                  <div class="prod-metric-card">
+                    <span class="prod-metric-label">Certified Organic Sold</span>
+                    <strong class="prod-metric-value" id="trace-sold-volume">--</strong>
+                    <span class="prod-metric-sub" id="trace-buyer-label">IRCC Organic</span>
+                  </div>
+                </div>
+              </div>
+
+              <p class="origin-story-quote">
+                "Rice grown by registered conservation families who commit to zero chemical fertilizers, zero hunting, and zero forest clearing, safeguarding the Critically Endangered Giant Ibis."
+              </p>
+            </div>
+
+            <!-- ===== 5-STAGE INSPECTION WORKFLOW TAB BAR (Staff Only) ===== -->
+            <div class="drawer-tabs staff-only" id="drawer-tab-bar" role="tablist">
               <button class="drawer-tab-btn active" data-tab="tab-farmer" id="tab-btn-farmer" title="Stage 1: Farmer Profile">
                 <span class="step-num">1</span>
                 <span class="step-title">Farmer</span>
@@ -299,15 +663,6 @@
                  STAGE 1: FARMER LEVEL (General & Compliance)
                  ===================================================== -->
             <div class="drawer-tab-panel active" id="tab-farmer">
-              <!-- Farmer Level Hierarchy Indicator Banner -->
-              <div class="level-indicator-banner farmer-banner">
-                <div class="banner-top-line">
-                  <span class="banner-pill farmer-pill">🧑‍🌾 1 FARMER RECORD</span>
-                  <span class="banner-scope">Shared across all parcels</span>
-                </div>
-                <div class="banner-main-title">Family <b id="banner-family-id">--</b> Profile &amp; Demographics</div>
-                <div class="banner-note">This farmer-level information is recorded once and automatically reused for every parcel.</div>
-              </div>
 
               <!-- Registered Parcels Switcher for this Farmer -->
               <div class="family-parcels-box" id="family-parcels-container" style="display: none;">
@@ -323,14 +678,15 @@
               <div class="insp-section-card">
               <div class="card-section-title">
                 <span>🌾 Compliance Quick Check</span>
-                <span class="badge status-pill" id="badge-farmer-compliance">Required</span>
+                <span class="badge status-pill" id="badge-farmer-compliance" style="display: none;"></span>
               </div>
               <div class="form-group">
                 <label for="f-compliant">Farmer Compliance Status *</label>
                 <select id="f-compliant" class="form-select">
-                  <option value="1">1: Compliant (Standard Organic Inspection)</option>
-                  <option value="2">2: Non-compliant (Infringement Found)</option>
-                  <option value="3">3: Resigned (Farmer Resignation)</option>
+                  <option value="" selected disabled>-- Select Compliance --</option>
+                  <option value="Compliance">Compliance</option>
+                  <option value="Non-Compliance">Non-Compliance</option>
+                  <option value="Resign">Resign</option>
                 </select>
               </div>
 
@@ -361,13 +717,14 @@
                     <input type="date" id="f-nc-date" />
                   </div>
                   <div class="form-group">
-                    <label for="f-nc-status">Status at Incident</label>
+                    <label for="f-nc-status">Land Organic Status at Incident</label>
                     <select id="f-nc-status">
+                      <option value="" selected disabled>-- Select Status --</option>
                       <option value="Organic">Organic</option>
-                      <option value="New_Organic">New_Organic</option>
-                      <option value="Ibis II">Ibis II</option>
+                      <option value="New Organic">New Organic</option>
                       <option value="Ibis I">Ibis I</option>
-                      <option value="WF">Wildlife Friendly</option>
+                      <option value="Ibis II">Ibis II</option>
+                      <option value="WF">WF (Wildlife Friendly)</option>
                     </select>
                   </div>
                 </div>
@@ -388,6 +745,7 @@
                 <div class="form-group">
                   <label for="f-gender">Gender of Head *</label>
                   <select id="f-gender">
+                    <option value="" selected disabled>-- Select Gender --</option>
                     <option value="1">1: Male</option>
                     <option value="2">2: Female</option>
                   </select>
@@ -398,6 +756,7 @@
                 <div class="form-group">
                   <label for="f-is-head-interviewee">Is Interviewee the Head?</label>
                   <select id="f-is-head-interviewee">
+                    <option value="" selected disabled>-- Select Option --</option>
                     <option value="1">1: Yes (Head interviewed)</option>
                     <option value="2">2: No (Other member)</option>
                   </select>
@@ -405,6 +764,7 @@
                 <div class="form-group">
                   <label for="f-ethnicity">Ethnicity</label>
                   <select id="f-ethnicity">
+                    <option value="" selected disabled>-- Select Ethnicity --</option>
                     <option value="1">1: Khmer</option>
                     <option value="2">2: Indigenous People (IP)</option>
                   </select>
@@ -420,6 +780,7 @@
                 <div class="form-group">
                   <label for="f-interviewee-gender">Interviewee Gender</label>
                   <select id="f-interviewee-gender">
+                    <option value="" selected disabled>-- Select Gender --</option>
                     <option value="1">1: Male</option>
                     <option value="2">2: Female</option>
                   </select>
@@ -428,18 +789,18 @@
 
               <div class="form-row-two">
                 <div class="form-group">
-                  <label for="f-status">Farmer Status</label>
+                  <label for="f-status">Farmer Status *</label>
                   <select id="f-status">
-                    <option value="1">1: Organic</option>
-                    <option value="2">2: New_Organic</option>
-                    <option value="3">3: Ibis II</option>
-                    <option value="4">4: Ibis I</option>
-                    <option value="5">5: Wildlife Friendly</option>
+                    <option value="" selected disabled>-- Select Status --</option>
+                    <option value="Existing">Existing</option>
+                    <option value="New">New</option>
+                    <option value="Rejoin">Rejoin</option>
                   </select>
                 </div>
                 <div class="form-group">
                   <label for="f-labor-mf">Primary Farm Labor</label>
                   <select id="f-labor-mf">
+                    <option value="" selected disabled>-- Select Option --</option>
                     <option value="1">1: Male</option>
                     <option value="2">2: Female</option>
                     <option value="3">3: Equal</option>
@@ -451,15 +812,15 @@
               <div class="form-row-three">
                 <div class="form-group">
                   <label for="f-members">Total Members</label>
-                  <input type="number" id="f-members" min="1" max="30" value="4" />
+                  <input type="number" id="f-members" min="1" max="30" placeholder="e.g. 4" />
                 </div>
                 <div class="form-group">
                   <label for="f-females">Female Count</label>
-                  <input type="number" id="f-females" min="0" max="30" value="2" />
+                  <input type="number" id="f-females" min="0" max="30" placeholder="e.g. 2" />
                 </div>
                 <div class="form-group">
                   <label for="f-school">Kids in School</label>
-                  <input type="number" id="f-school" min="0" max="20" value="2" />
+                  <input type="number" id="f-school" min="0" max="20" placeholder="e.g. 2" />
                 </div>
               </div>
 
@@ -467,6 +828,7 @@
                 <div class="form-group">
                   <label for="f-toilet">Household Toilet?</label>
                   <select id="f-toilet">
+                    <option value="" selected disabled>-- Select Option --</option>
                     <option value="1">1: Yes</option>
                     <option value="2">2: No</option>
                   </select>
@@ -474,6 +836,7 @@
                 <div class="form-group">
                   <label for="f-disable">Person with Disability?</label>
                   <select id="f-disable">
+                    <option value="" selected disabled>-- Select Option --</option>
                     <option value="2">2: No</option>
                     <option value="1">1: Yes</option>
                   </select>
@@ -484,10 +847,9 @@
               <div class="form-group">
                 <label>Trainings Attended</label>
                 <div class="chip-group" id="f-trainings">
-                  <label class="chip"><input type="checkbox" value="1"> Organic Standards</label>
-                  <label class="chip"><input type="checkbox" value="2"> Fair for Life (FFL)</label>
-                  <label class="chip"><input type="checkbox" value="3"> Land Preparation</label>
-                  <label class="chip"><input type="checkbox" value="4"> Farm Records Book</label>
+                  <label class="chip"><input type="checkbox" value="Organic Standard"> Organic Standard</label>
+                  <label class="chip"><input type="checkbox" value="Organic Agriculture"> Organic Agriculture</label>
+                  <label class="chip"><input type="checkbox" value="Fair for Life"> Fair for Life</label>
                 </div>
               </div>
 
@@ -503,15 +865,15 @@
               <div class="form-row-three">
                 <div class="form-group">
                   <label for="f-cattle">Cattle</label>
-                  <input type="number" id="f-cattle" min="0" value="0" />
+                  <input type="number" id="f-cattle" min="0" placeholder="0" />
                 </div>
                 <div class="form-group">
                   <label for="f-buffalo">Buffalo</label>
-                  <input type="number" id="f-buffalo" min="0" value="0" />
+                  <input type="number" id="f-buffalo" min="0" placeholder="0" />
                 </div>
                 <div class="form-group">
                   <label for="f-other-animals">Other Animals</label>
-                  <input type="number" id="f-other-animals" min="0" value="0" />
+                  <input type="number" id="f-other-animals" min="0" placeholder="0" />
                 </div>
               </div>
             </div>
@@ -528,15 +890,6 @@
                STAGE 2: PARCEL / PLOT LEVEL (Physical Land & History)
                ===================================================== -->
           <div class="drawer-tab-panel" id="tab-parcel">
-            <!-- Parcel Level Hierarchy Indicator Banner -->
-            <div class="level-indicator-banner parcel-banner">
-              <div class="banner-top-line">
-                <span class="banner-pill parcel-pill">🗺️ PARCEL RECORD</span>
-                <span class="banner-scope">Specific to this parcel</span>
-              </div>
-              <div class="banner-main-title">Plot <b id="banner-plot-id">--</b> Land Baseline &amp; Field Info</div>
-              <div class="banner-note">Each parcel has its own land tenure, GPS area, irrigation, and buffer conditions.</div>
-            </div>
 
             <div class="insp-section-card">
               <div class="card-section-title">
@@ -555,22 +908,36 @@
                 </div>
               </div>
 
-              <div class="form-group">
-                <label for="p-land-situation">Land Situation / Tenure *</label>
-                <select id="p-land-situation">
-                  <option value="1">1: Own Land</option>
-                  <option value="2">2: Land Loan</option>
-                  <option value="3">3: Land Purchase</option>
-                  <option value="4">4: Land Lease / Rent</option>
-                  <option value="5">5: Lent to Someone</option>
-                  <option value="6">6: Inherited</option>
-                </select>
+              <div class="form-row-two">
+                <div class="form-group">
+                  <label for="p-land-status">Land / Parcel Organic Status *</label>
+                  <select id="p-land-status">
+                    <option value="Organic">Organic</option>
+                    <option value="New Organic">New Organic</option>
+                    <option value="Ibis I">Ibis I</option>
+                    <option value="Ibis II">Ibis II</option>
+                    <option value="WF">WF (Wildlife Friendly)</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="p-land-situation">Land Situation / Tenure *</label>
+                  <select id="p-land-situation">
+                    <option value="" selected disabled>-- Select Tenure --</option>
+                    <option value="1">1: Own Land</option>
+                    <option value="2">2: Land Loan</option>
+                    <option value="3">3: Land Purchase</option>
+                    <option value="4">4: Land Lease / Rent</option>
+                    <option value="5">5: Lent to Someone</option>
+                    <option value="6">6: Inherited</option>
+                  </select>
+                </div>
               </div>
 
               <div class="form-row-two">
                 <div class="form-group">
                   <label for="p-irrigation">Irrigation System *</label>
                   <select id="p-irrigation">
+                    <option value="" selected disabled>-- Select Option --</option>
                     <option value="1">1: Rainfed</option>
                     <option value="2">2: Canal / Reservoir</option>
                   </select>
@@ -578,6 +945,7 @@
                 <div class="form-group">
                   <label for="p-contamination">Contamination Risk?</label>
                   <select id="p-contamination">
+                    <option value="" selected disabled>-- Select Option --</option>
                     <option value="2">2: No (Safe Buffer)</option>
                     <option value="1">1: Yes (Risk Nearby)</option>
                   </select>
@@ -594,6 +962,7 @@
               <div class="form-group">
                 <label for="p-last-prohibited">Prohibited Chemicals Used in Past 3 Years?</label>
                 <select id="p-last-prohibited">
+                  <option value="" selected disabled>-- Select Option --</option>
                   <option value="2">2: No (Clean Organic)</option>
                   <option value="1">1: Yes (Chemicals Used)</option>
                 </select>
@@ -604,9 +973,9 @@
                 <div class="form-group">
                   <label>Prohibited Inputs Applied</label>
                   <div class="chip-group" id="p-prohibited-chips">
-                    <label class="chip"><input type="checkbox" value="Fertilizer"> Chemical Fertilizer</label>
-                    <label class="chip"><input type="checkbox" value="Herbicide"> Chemical Herbicide</label>
-                    <label class="chip"><input type="checkbox" value="Pesticide"> Chemical Pesticide</label>
+                    <label class="chip"><input type="checkbox" value="Fertilizer"> Fertilizer</label>
+                    <label class="chip"><input type="checkbox" value="Herbicide"> Herbicide</label>
+                    <label class="chip"><input type="checkbox" value="Pesticide"> Pesticide</label>
                   </div>
                 </div>
                 <div class="form-group">
@@ -618,24 +987,37 @@
               <div class="form-group">
                 <label for="p-other-crop">Plant Other Crops / Intercropping?</label>
                 <select id="p-other-crop">
+                  <option value="" selected disabled>-- Select Option --</option>
                   <option value="2">2: No (Rice Only)</option>
                   <option value="1">1: Yes (Secondary Crops)</option>
                 </select>
               </div>
 
               <!-- Conditional Intercrop Details -->
-              <div id="p-other-crop-details" class="form-row-two conditional-block" style="display: none;">
+              <div id="p-other-crop-details" class="conditional-block" style="display: none;">
                 <div class="form-group">
-                  <label for="p-crop-name">Which Crop?</label>
-                  <input type="text" id="p-crop-name" placeholder="e.g. Mungbean, Watermelon..." autocomplete="off" />
+                  <label for="p-crop-name">Crop Name *</label>
+                  <input type="text" id="p-crop-name" placeholder="e.g. Mungbean, Watermelon, Peanut, Sesame..." autocomplete="off" />
                 </div>
-                <div class="form-group">
-                  <label for="p-crop-status">Status at Harvest</label>
-                  <select id="p-crop-status">
-                    <option value="Before">Harvested before rice</option>
-                    <option value="During">Same time as rice</option>
-                    <option value="After">Harvested after rice</option>
-                  </select>
+                <div class="form-row-two">
+                  <div class="form-group">
+                    <label for="p-crop-plant-date">Planting Date</label>
+                    <input type="date" id="p-crop-plant-date" />
+                  </div>
+                  <div class="form-group">
+                    <label for="p-crop-harvest-date">Harvest Date</label>
+                    <input type="date" id="p-crop-harvest-date" />
+                  </div>
+                </div>
+                <div class="form-row-two">
+                  <div class="form-group">
+                    <label for="p-crop-actual-kg">Actual Production (kg)</label>
+                    <input type="number" id="p-crop-actual-kg" min="0" step="0.1" placeholder="kg" />
+                  </div>
+                  <div class="form-group">
+                    <label for="p-crop-sold-kg">Sold (kg)</label>
+                    <input type="number" id="p-crop-sold-kg" min="0" step="0.1" placeholder="kg" />
+                  </div>
                 </div>
               </div>
 
@@ -683,15 +1065,6 @@
                STAGE 3: SUBPLOTS LEVEL (Map Sketches, Subplots & Harvest)
                ===================================================== -->
           <div class="drawer-tab-panel" id="tab-subplots">
-            <!-- Subplots Level Hierarchy Indicator Banner -->
-            <div class="level-indicator-banner subplots-banner">
-              <div class="banner-top-line">
-                <span class="banner-pill subplots-pill">🌿 SUBPLOTS &amp; HARVEST</span>
-                <span class="banner-scope">1 Harvest per Subplot</span>
-              </div>
-              <div class="banner-main-title">Plot <b id="banner-subplots-plot">--</b> Subplots &amp; Individual Harvest Records</div>
-              <div class="banner-note">Each sketched subplot tracks its own variety, area, organic inputs, and actual harvest/sales.</div>
-            </div>
 
             <div class="details-grid">
               <div class="detail-item">
@@ -722,11 +1095,8 @@
                     <span id="subplots-count-badge" class="badge subplots-badge">0</span>
                   </div>
                 </div>
-                <button id="btn-start-drawing" class="action-btn draw-subplot-btn" title="Sketch subplots within this main plot">
-                  <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M12 5v14M5 12h14"></path>
-                  </svg>
-                  <span>+ Draw Subplot</span>
+                <button type="button" class="draw-subplot-btn" id="btn-start-drawing" title="Draw/separate subplots on map">
+                  ✏️ + Draw Subplot
                 </button>
               </div>
 
@@ -784,15 +1154,6 @@
                STAGE 4: POST-HARVEST INSPECTION (Farmer Level, Off-Season)
                ===================================================== -->
           <div class="drawer-tab-panel" id="tab-postharvest">
-            <!-- Post-Harvest Level Hierarchy Indicator Banner -->
-            <div class="level-indicator-banner postharvest-banner">
-              <div class="banner-top-line">
-                <span class="banner-pill postharvest-pill">🛖 1 POST-HARVEST RECORD</span>
-                <span class="banner-scope">Off-season farmer inspection</span>
-              </div>
-              <div class="banner-main-title">Family <b id="banner-postharvest-family">--</b> Post-Harvest &amp; Storage</div>
-              <div class="banner-note">Completed once per farmer during the off-season rather than repeated for every parcel or subplot.</div>
-            </div>
 
             <!-- Chamkar Card -->
             <div class="insp-section-card">
@@ -811,7 +1172,7 @@
                 <div class="form-row-two">
                   <div class="form-group">
                     <label for="c-chamkar-num">Number of Chamkars</label>
-                    <input type="number" id="c-chamkar-num" min="1" value="1" />
+                    <input type="number" id="c-chamkar-num" min="1" placeholder="1" />
                   </div>
                   <div class="form-group">
                     <label for="c-chamkar-area">Total Chamkar Area (ha)</label>
@@ -841,13 +1202,14 @@
                 <div class="form-group">
                   <label for="c-rice-barn">Dedicated Rice Barn?</label>
                   <select id="c-rice-barn">
+                    <option value="" selected disabled>-- Select Option --</option>
                     <option value="1">1: Yes (Has barn)</option>
                     <option value="2">2: No (Stored in house)</option>
                   </select>
                 </div>
                 <div class="form-group" id="c-chambers-group">
                   <label for="c-chambers">Barn Chambers</label>
-                  <input type="number" id="c-chambers" min="1" value="1" />
+                  <input type="number" id="c-chambers" min="1" placeholder="1" />
                 </div>
               </div>
 
@@ -855,6 +1217,7 @@
                 <div class="form-group">
                   <label for="c-barn-clean">Barn Clean Inside/Out?</label>
                   <select id="c-barn-clean">
+                    <option value="" selected disabled>-- Select Option --</option>
                     <option value="1">1: Yes (Clean &amp; dry)</option>
                     <option value="2">2: No (Needs cleaning)</option>
                   </select>
@@ -862,6 +1225,7 @@
                 <div class="form-group">
                   <label for="c-barn-chemicals">Free of Agrochemicals?</label>
                   <select id="c-barn-chemicals">
+                    <option value="" selected disabled>-- Select Option --</option>
                     <option value="1">1: Yes (No chemicals)</option>
                     <option value="2">2: No (Risk detected)</option>
                   </select>
@@ -878,6 +1242,7 @@
                 <div class="form-group">
                   <label for="c-clear-forest">New Forest Cleared?</label>
                   <select id="c-clear-forest">
+                    <option value="" selected disabled>-- Select Option --</option>
                     <option value="2">2: No (Compliant)</option>
                     <option value="1">1: Yes (Infringement)</option>
                   </select>
@@ -885,6 +1250,7 @@
                 <div class="form-group">
                   <label for="c-expand-land">Boundary Expanded?</label>
                   <select id="c-expand-land">
+                    <option value="" selected disabled>-- Select Option --</option>
                     <option value="2">2: No (Compliant)</option>
                     <option value="1">1: Yes (Infringement)</option>
                   </select>
@@ -895,6 +1261,7 @@
                 <div class="form-group">
                   <label for="c-burn-straw">Burned Rice Straw/Stubble?</label>
                   <select id="c-burn-straw">
+                    <option value="" selected disabled>-- Select Option --</option>
                     <option value="2">2: No (Compliant)</option>
                     <option value="1">1: Yes (Infringement)</option>
                   </select>
@@ -902,6 +1269,7 @@
                 <div class="form-group">
                   <label for="c-firebreak">Buffer / Firebreak Kept?</label>
                   <select id="c-firebreak">
+                    <option value="" selected disabled>-- Select Option --</option>
                     <option value="1">1: Yes (Protected)</option>
                     <option value="2">2: No (Unprotected)</option>
                   </select>
@@ -920,15 +1288,6 @@
                STAGE 5: CONFIRMATION & SIGN-OFF (Farmer Level)
                ===================================================== -->
           <div class="drawer-tab-panel" id="tab-confirm">
-            <!-- Confirmation Level Hierarchy Indicator Banner -->
-            <div class="level-indicator-banner confirm-banner">
-              <div class="banner-top-line">
-                <span class="banner-pill confirm-pill">✍️ 1 CONFIRMATION RECORD</span>
-                <span class="banner-scope">Farmer level sign-off</span>
-              </div>
-              <div class="banner-main-title">Family <b id="banner-confirm-family">--</b> Inspection Conclusion</div>
-              <div class="banner-note">One complete confirmation form covering the full inspection per farmer.</div>
-            </div>
 
             <!-- Final Conclusion & Confirmations -->
             <div class="insp-section-card highlight-card">
@@ -939,6 +1298,7 @@
               <div class="form-group">
                 <label for="c-certified-status">Final Organic Recommendation *</label>
                 <select id="c-certified-status">
+                  <option value="" selected disabled>-- Select Organic Recommendation --</option>
                   <option value="1">1: Approved Certified Organic</option>
                   <option value="2">2: Minor Corrective Action Needed</option>
                   <option value="3">3: Disqualified / Sanctioned</option>
@@ -1009,7 +1369,7 @@
       <div class="modal-header">
         <div>
           <span class="modal-eyebrow" id="modal-plot-ref">Family SD041 · Plot 11</span>
-          <h2>Subplot Details &amp; Inspection</h2>
+          <h2 id="subplot-modal-title">Subplot Details &amp; Inspection <span id="subplot-modal-status-pill" class="sub-status-pill status-blank" style="margin-left: 8px;">⚪ Blank Form</span></h2>
         </div>
         <button id="btn-close-modal" class="modal-close" aria-label="Close dialog">&times;</button>
       </div>
@@ -1047,6 +1407,7 @@
         <div class="form-group">
           <label for="subplot-variety">Rice Variety *</label>
           <select id="subplot-variety">
+            <option value="" selected disabled>-- Select Variety --</option>
             <option value="Phka Rumduol">Phka Rumduol</option>
             <option value="Red Jasmine">Red Jasmine</option>
             <option value="Local Variety">Local Variety</option>
@@ -1057,117 +1418,124 @@
         </div>
 
         <div class="form-group" id="custom-variety-group" style="display: none;">
-          <label for="subplot-custom-variety">Specify Variety Name *</label>
-          <input type="text" id="subplot-custom-variety" placeholder="Enter variety name" autocomplete="off" />
+          <label for="subplot-custom-variety">Exact Local Variety Name *</label>
+          <input type="text" id="subplot-custom-variety" placeholder="e.g. Neang Khon, CAR4, Raing Chey..." autocomplete="off" />
         </div>
 
-        <!-- Collapsible Extended Subplot ICS 2026 Section -->
-        <div class="collapsible-toggle active" id="sp-extended-toggle">
-          <span>🌿 Subplot Inspection Details (Seed, Fertilizer, Yield)</span>
-          <span class="chevron">▼</span>
-        </div>
-        <div id="sp-extended-content" class="collapsible-content">
-          <div class="form-row-two">
-            <div class="form-group">
-              <label for="sp-seed-source">Seed Source</label>
-              <select id="sp-seed-source">
-                <option value="Own saved">Own saved seed</option>
-                <option value="IRPG">IRPG certified</option>
-                <option value="Purchased">Purchased / Member</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label for="sp-seed-kg">Seed Quantity (kg)</label>
-              <input type="number" id="sp-seed-kg" placeholder="kg" min="0" />
-            </div>
+        <!-- Extended Inspection Details Wrapper (Hidden for Other / Fallow) -->
+        <div id="sp-extended-wrapper">
+          <!-- Collapsible Extended Subplot ICS 2026 Section -->
+          <div class="collapsible-toggle active" id="sp-extended-toggle">
+            <span>🌿 Subplot Inspection Details (Seed, Fertilizer, Yield)</span>
+            <span class="chevron">▼</span>
           </div>
-
-          <div class="form-row-two">
-            <div class="form-group">
-              <label for="sp-planting-date">Broadcast / Planting Date</label>
-              <input type="date" id="sp-planting-date" />
-            </div>
-            <div class="form-group">
-              <label for="sp-planting-method">Planting Method</label>
-              <select id="sp-planting-method">
-                <option value="Direct seeding">Direct Seeding / Broadcasting</option>
-                <option value="Transplanting">Transplanting</option>
-                <option value="Dry nursery">Dry Nursery</option>
-                <option value="Fallow">Fallow</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="form-group">
-            <label for="sp-fertilizer-toggle">Organic Fertilizer Applied?</label>
-            <select id="sp-fertilizer-toggle">
-              <option value="no">No</option>
-              <option value="yes">Yes</option>
-            </select>
-          </div>
-
-          <div id="sp-fertilizer-block" class="conditional-block" style="display: none;">
-            <div class="form-group">
-              <label>Fertilizer Type</label>
-              <div class="chip-group" id="sp-fertilizer-chips">
-                <label class="chip"><input type="checkbox" value="Cow manure"> Cow manure</label>
-                <label class="chip"><input type="checkbox" value="Compost"> Compost</label>
-                <label class="chip"><input type="checkbox" value="Green manure"> Green manure</label>
-                <label class="chip"><input type="checkbox" value="Organic Fertilizer"> Organic Fertilizer</label>
-              </div>
-            </div>
+          <div id="sp-extended-content" class="collapsible-content">
             <div class="form-row-two">
               <div class="form-group">
-                <label for="sp-fertilizer-qty">Amount (kg)</label>
-                <input type="number" id="sp-fertilizer-qty" placeholder="kg" />
+                <label for="sp-seed-source">Seed Source</label>
+                <select id="sp-seed-source">
+                  <option value="" selected disabled>-- Select Source --</option>
+                  <option value="Own saved">Own saved seed</option>
+                  <option value="IRPG">IRPG certified</option>
+                  <option value="Purchased">Purchased / Member</option>
+                </select>
               </div>
               <div class="form-group">
-                <label for="sp-fertilizer-date">Application Date</label>
-                <input type="date" id="sp-fertilizer-date" />
+                <label for="sp-seed-kg">Seed Quantity (kg)</label>
+                <input type="number" id="sp-seed-kg" placeholder="kg" min="0" />
               </div>
             </div>
-          </div>
 
-          <div class="form-group">
-            <label for="sp-protection-toggle">Crop Protection Applied?</label>
-            <select id="sp-protection-toggle">
-              <option value="no">No</option>
-              <option value="yes">Yes</option>
-            </select>
-          </div>
-
-          <div id="sp-protection-block" class="conditional-block" style="display: none;">
-            <div class="form-group">
-              <label for="sp-protection-action">Protection Method / Action</label>
-              <input type="text" id="sp-protection-action" placeholder="e.g. Botanical repellent spray, traps..." autocomplete="off" />
-            </div>
             <div class="form-row-two">
               <div class="form-group">
-                <label for="sp-protection-qty">Amount (kg / L)</label>
-                <input type="number" id="sp-protection-qty" placeholder="Amount" />
+                <label for="sp-planting-date">Broadcast / Planting Date</label>
+                <input type="date" id="sp-planting-date" />
               </div>
               <div class="form-group">
-                <label for="sp-protection-date">Protection Date</label>
-                <input type="date" id="sp-protection-date" />
+                <label for="sp-planting-method">Planting Method</label>
+                <select id="sp-planting-method">
+                  <option value="" selected disabled>-- Select Method --</option>
+                  <option value="Direct seeding">Direct Seeding / Broadcasting</option>
+                  <option value="Transplanting">Transplanting</option>
+                  <option value="Dry nursery">Dry Nursery</option>
+                  <option value="Fallow">Fallow</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="sp-fertilizer-toggle">Organic Fertilizer Applied?</label>
+              <select id="sp-fertilizer-toggle">
+                <option value="" selected disabled>-- Select Option --</option>
+                <option value="no">No</option>
+                <option value="yes">Yes</option>
+              </select>
+            </div>
+
+            <div id="sp-fertilizer-block" class="conditional-block" style="display: none;">
+              <div class="form-group">
+                <label>Fertilizer Type</label>
+                <div class="chip-group" id="sp-fertilizer-chips">
+                  <label class="chip"><input type="checkbox" value="Cow manure"> Cow manure</label>
+                  <label class="chip"><input type="checkbox" value="Compost"> Compost</label>
+                  <label class="chip"><input type="checkbox" value="Green manure"> Green manure</label>
+                  <label class="chip"><input type="checkbox" value="Organic Fertilizer"> Organic Fertilizer</label>
+                </div>
+              </div>
+              <div class="form-row-two">
+                <div class="form-group">
+                  <label for="sp-fertilizer-qty">Amount (kg)</label>
+                  <input type="number" id="sp-fertilizer-qty" placeholder="kg" />
+                </div>
+                <div class="form-group">
+                  <label for="sp-fertilizer-date">Application Date</label>
+                  <input type="date" id="sp-fertilizer-date" />
+                </div>
+              </div>
+            </div>
+
+            <div class="form-group">
+              <label for="sp-protection-toggle">Crop Protection Applied?</label>
+              <select id="sp-protection-toggle">
+                <option value="" selected disabled>-- Select Option --</option>
+                <option value="no">No</option>
+                <option value="yes">Yes</option>
+              </select>
+            </div>
+
+            <div id="sp-protection-block" class="conditional-block" style="display: none;">
+              <div class="form-group">
+                <label for="sp-protection-action">Protection Method / Action</label>
+                <input type="text" id="sp-protection-action" placeholder="e.g. Botanical repellent spray, traps..." autocomplete="off" />
+              </div>
+              <div class="form-row-two">
+                <div class="form-group">
+                  <label for="sp-protection-qty">Amount (kg / L)</label>
+                  <input type="number" id="sp-protection-qty" placeholder="Amount" />
+                </div>
+                <div class="form-group">
+                  <label for="sp-protection-date">Protection Date</label>
+                  <input type="date" id="sp-protection-date" />
+                </div>
+              </div>
+            </div>
+
+            <div class="form-row-two">
+              <div class="form-group">
+                <label for="sp-expected-yield">Expected Harvest (kg)</label>
+                <input type="number" id="sp-expected-yield" placeholder="e.g. 1500" />
+              </div>
+              <div class="form-group">
+                <label for="sp-expected-sale">Expected for Sale (kg)</label>
+                <input type="number" id="sp-expected-sale" placeholder="e.g. 1000" />
               </div>
             </div>
           </div>
 
-          <div class="form-row-two">
-            <div class="form-group">
-              <label for="sp-expected-yield">Expected Harvest (kg)</label>
-              <input type="number" id="sp-expected-yield" placeholder="e.g. 1500" />
-            </div>
-            <div class="form-group">
-              <label for="sp-expected-sale">Expected for Sale (kg)</label>
-              <input type="number" id="sp-expected-sale" placeholder="e.g. 1000" />
-            </div>
+          <div class="form-group" style="margin-top: 10px;">
+            <label for="subplot-notes">Inspection Notes (Optional)</label>
+            <textarea id="subplot-notes" rows="2" placeholder="Crop condition, observations..."></textarea>
           </div>
-        </div>
-
-        <div class="form-group">
-          <label for="subplot-notes">Inspection Notes (Optional)</label>
-          <textarea id="subplot-notes" rows="2" placeholder="Crop condition, observations..."></textarea>
         </div>
 
         <div class="modal-footer">
@@ -1186,7 +1554,7 @@
       <div class="modal-header">
         <div>
           <span class="modal-eyebrow" id="harvest-modal-plot-ref">Plot -- · Subplot --</span>
-          <h2 id="harvest-modal-title">🌾 Subplot Harvest Record</h2>
+          <h2 id="harvest-modal-title">🌾 Subplot Harvest Record <span id="harvest-modal-status-pill" class="sub-status-pill status-blank" style="margin-left: 8px;">⚪ Blank Form</span></h2>
         </div>
         <button id="btn-close-harvest-modal" class="modal-close" aria-label="Close dialog">&times;</button>
       </div>
@@ -1201,6 +1569,7 @@
         <div class="form-group">
           <label for="sh-complete">Threshing Completed for this Subplot? *</label>
           <select id="sh-complete" class="form-select">
+            <option value="" selected disabled>-- Select Option --</option>
             <option value="1">1: Yes (Threshing finished)</option>
             <option value="2">2: No (Not yet complete)</option>
           </select>
@@ -1210,6 +1579,7 @@
         <div id="sh-incomplete-block" class="form-group conditional-block" style="display: none;">
           <label for="sh-reason-no">Reason Threshing Not Done</label>
           <select id="sh-reason-no" class="form-select">
+            <option value="" selected disabled>-- Select Reason --</option>
             <option value="Not mature">Paddy not yet mature</option>
             <option value="Machine delay">Threshing contractor delayed</option>
             <option value="Weather">Adverse rain / weather</option>
@@ -1227,6 +1597,7 @@
             <div class="form-group">
               <label for="sh-method">Threshing Method</label>
               <select id="sh-method">
+                <option value="" selected disabled>-- Select Method --</option>
                 <option value="3">3: Combine Harvester</option>
                 <option value="2">2: Hand Tractor Thresher</option>
                 <option value="1">1: Manual / Hand Beating</option>
@@ -1241,7 +1612,7 @@
             </div>
             <div class="form-group">
               <label for="sh-flush">Organic Flush Quantity (kg)</label>
-              <input type="number" id="sh-flush" placeholder="e.g. 50" value="0" />
+              <input type="number" id="sh-flush" placeholder="e.g. 50" value="" />
             </div>
           </div>
 
@@ -1249,6 +1620,7 @@
             <div class="form-group">
               <label for="sh-dry-loc">Paddy Drying Location</label>
               <select id="sh-dry-loc">
+                <option value="" selected disabled>-- Select Location --</option>
                 <option value="1">1: Tarp on Ground</option>
                 <option value="2">2: Concrete Yard</option>
                 <option value="3">3: Direct to Mill</option>
@@ -1257,6 +1629,7 @@
             <div class="form-group">
               <label for="sh-payment-type">Payment Mode</label>
               <select id="sh-payment-type">
+                <option value="" selected disabled>-- Select Payment Mode --</option>
                 <option value="1">1: Cash (KHR)</option>
                 <option value="2">2: In-Kind (Paddy kg)</option>
               </select>
@@ -1306,12 +1679,373 @@
   </div>
 
 
+  <!-- =======================================================
+       1. AUTHENTICATION MODAL (Field Staff & Admin Login)
+       ======================================================= -->
+  <div id="modal-auth" class="modal-backdrop" style="display: none;">
+    <div class="modal-dialog auth-dialog">
+      <div class="modal-header">
+        <div class="modal-title-with-icon">
+          <div class="auth-modal-logo">🌾</div>
+          <div>
+            <h3>Internal Control System</h3>
+            <p class="modal-subtitle">Spatial Management</p>
+          </div>
+        </div>
+        <button type="button" id="btn-close-auth-modal" class="modal-close-btn" title="Close Sign In Portal" aria-label="Close modal">&times;</button>
+      </div>
+
+      <div class="auth-tabs" role="tablist">
+        <button type="button" class="auth-tab-btn active" id="tab-btn-pin" data-auth-mode="pin">
+          <span>⚡ Field PIN</span>
+        </button>
+        <button type="button" class="auth-tab-btn" id="tab-btn-pwd" data-auth-mode="pwd">
+          <span>📧 Email &amp; Password</span>
+        </button>
+      </div>
+
+      <!-- Quick Demo Access Options -->
+      <div class="demo-login-chips">
+        <span class="demo-label">Quick Staff Demo Access</span>
+        <div class="demo-chip-grid">
+          <button type="button" class="demo-chip" id="btn-demo-inspector" title="Log in as Field Inspector">
+            🧑‍🌾 Field Inspector
+          </button>
+          <button type="button" class="demo-chip" id="btn-demo-admin" title="Log in as System Admin">
+            🛡️ Administrator
+          </button>
+        </div>
+      </div>
+
+      <!-- Form Mode 1: Field PIN -->
+      <form id="form-auth-pin" class="auth-form-panel">
+        <div class="form-group">
+          <label for="auth-pin-input">Enter 4-Digit Field PIN</label>
+          <div class="pin-input-container">
+            <input type="password" id="auth-pin-input" class="pin-display-input" maxlength="4" placeholder="••••" autocomplete="off" inputmode="numeric" />
+          </div>
+          <p class="field-hint">Field Inspector PIN: <strong>1234</strong> &bull; Admin PIN: <strong>9999</strong></p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="secondary-btn" id="btn-cancel-auth-pin">Cancel</button>
+          <button type="submit" class="primary-btn save-btn" id="btn-submit-pin">Unlock Session</button>
+        </div>
+      </form>
+
+      <!-- Form Mode 2: Email & Password -->
+      <form id="form-auth-pwd" class="auth-form-panel" style="display: none;">
+        <div class="form-group">
+          <label for="auth-email-input">Email Address</label>
+          <input type="email" id="auth-email-input" placeholder="e.g. inspector@ibisrice.com" required />
+        </div>
+        <div class="form-group">
+          <label for="auth-password-input">Password</label>
+          <input type="password" id="auth-password-input" placeholder="Enter password" required />
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="secondary-btn" id="btn-cancel-auth-pwd">Cancel</button>
+          <button type="submit" class="primary-btn save-btn" id="btn-submit-pwd">Sign In</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- =======================================================
+       2. ANNUAL GIS GEOJSON INGESTION & DIFF WORKBENCH MODAL
+       ======================================================= -->
+  <div id="modal-admin-gis" class="modal-backdrop" style="display: none;">
+    <div class="modal-dialog gis-dialog">
+      <div class="modal-header">
+        <div class="modal-title-with-icon">
+          <div class="gis-modal-logo">🗺️</div>
+          <div>
+            <h3>Annual GIS GeoJSON Ingestion &amp; Diff</h3>
+            <p class="modal-subtitle">Upload annual all_ibis_rice_plots.geojson without altering past inspection history</p>
+          </div>
+        </div>
+        <button type="button" id="btn-close-gis-modal" class="modal-close-btn">&times;</button>
+      </div>
+
+      <div class="gis-modal-body">
+        <div class="gis-info-box">
+          <p>The GIS Diff Engine analyzes boundary modifications, split plots, and newly mapped cadastral land. Existing inspection records and digital signatures remain immutably anchored to their original seasons.</p>
+        </div>
+
+        <div class="form-row-two" style="margin-bottom: 14px;">
+          <div class="form-group">
+            <label for="gis-target-season">Target Inspection Season</label>
+            <select id="gis-target-season" class="gis-season-select">
+              <option value="2027" selected>Season 2027 (Upcoming)</option>
+              <option value="2026">Season 2026 (Current Active)</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="gis-file-input">Select all_ibis_rice_plots.geojson</label>
+            <input type="file" id="gis-file-input" accept=".geojson,.json" class="gis-file-upload" />
+          </div>
+        </div>
+
+        <div class="gis-diff-actions">
+          <button type="button" id="btn-run-gis-diff" class="primary-btn" disabled>
+            🔍 Analyze GeoJSON Diff
+          </button>
+          <button type="button" id="btn-use-server-geojson" class="secondary-btn" title="Use current server all_ibis_rice_plots.geojson">
+            📂 Test with Server GeoJSON
+          </button>
+        </div>
+
+        <!-- Live Diff Results Breakdown -->
+        <div id="gis-diff-output" class="gis-diff-output" style="display: none;">
+          <div class="diff-kpi-grid">
+            <div class="diff-kpi-card kpi-total">
+              <span class="kpi-num" id="diff-kpi-total">0</span>
+              <span class="kpi-label">Total Features</span>
+            </div>
+            <div class="diff-kpi-card kpi-unchanged">
+              <span class="kpi-num" id="diff-kpi-unchanged">0</span>
+              <span class="kpi-label">Unchanged</span>
+            </div>
+            <div class="diff-kpi-card kpi-modified">
+              <span class="kpi-num" id="diff-kpi-modified">0</span>
+              <span class="kpi-label">Boundary Shifted</span>
+            </div>
+            <div class="diff-kpi-card kpi-new">
+              <span class="kpi-num" id="diff-kpi-new">0</span>
+              <span class="kpi-label">New Plots</span>
+            </div>
+            <div class="diff-kpi-card kpi-removed">
+              <span class="kpi-num" id="diff-kpi-removed">0</span>
+              <span class="kpi-label">Archived</span>
+            </div>
+          </div>
+
+          <div class="diff-preview-table-container">
+            <table class="diff-table">
+              <thead>
+                <tr>
+                  <th>Plot Code</th>
+                  <th>Family ID</th>
+                  <th>Village</th>
+                  <th>Status</th>
+                  <th>Area Change</th>
+                </tr>
+              </thead>
+              <tbody id="diff-table-body">
+                <!-- Dynamically populated sample rows -->
+              </tbody>
+            </table>
+          </div>
+
+          <div class="diff-commit-box">
+            <p>Ready to update GIS records for this season? Historical seasons (2025, 2026) will remain untouched.</p>
+            <button type="button" id="btn-commit-gis-import" class="primary-btn commit-btn">
+              💾 Commit GIS Ingestion to Database
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- =======================================================
+       3. ENTERPRISE ADMIN & MASTER DATA WORKSPACE MODAL
+       ======================================================= -->
+  <div id="modal-admin-workspace" class="modal-backdrop" style="display: none;">
+    <div class="modal-dialog admin-workspace-dialog">
+      <div class="modal-header">
+        <div class="modal-title-with-icon">
+          <div class="admin-workspace-logo">🛡️</div>
+          <div>
+            <h3>IRCC Administration &amp; Master Data Center</h3>
+            <p class="modal-subtitle">Manage field inspector accounts, landscape territory assignments, and batch ICS audit exports</p>
+          </div>
+        </div>
+        <button type="button" id="btn-close-admin-workspace" class="modal-close-btn">&times;</button>
+      </div>
+
+      <div class="admin-workspace-nav" role="tablist">
+        <button type="button" class="admin-nav-btn active" id="nav-btn-inspectors" data-admin-tab="admin-tab-inspectors">
+          <span>🧑‍🌾 Inspector Accounts &amp; Territories</span>
+        </button>
+        <button type="button" class="admin-nav-btn" id="nav-btn-export" data-admin-tab="admin-tab-export">
+          <span>📊 Master ICS Data Center</span>
+        </button>
+        <button type="button" class="admin-nav-btn" id="nav-btn-gis" data-admin-tab="admin-tab-gis">
+          <span>🗺️ Annual GIS Updates</span>
+        </button>
+      </div>
+
+      <div class="admin-workspace-body">
+        <!-- Tab 1: Inspector Accounts & Territory Assignment -->
+        <div class="admin-tab-panel active" id="admin-tab-inspectors">
+          <div class="admin-panel-toolbar">
+            <div class="admin-toolbar-left">
+              <h4>Registered Field Inspectors &amp; Officers</h4>
+              <p class="toolbar-hint">Inspectors only see plots inside their assigned landscape and village zones.</p>
+            </div>
+            <div class="admin-toolbar-right">
+              <button type="button" class="primary-btn" id="btn-open-add-user-modal">
+                <span>➕ Add New Inspector</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Add / Edit Inspector Drawer Form (Collapsible) -->
+          <div id="admin-user-editor-card" class="admin-editor-card" style="display: none;">
+            <div class="editor-header">
+              <h5 id="editor-user-title">Add New Field Inspector</h5>
+              <button type="button" id="btn-cancel-user-editor" class="text-btn">Cancel</button>
+            </div>
+            <form id="form-admin-user" class="admin-user-form">
+              <input type="hidden" id="admin-user-id" value="" />
+              <div class="form-row-two">
+                <div class="form-group">
+                  <label for="admin-user-name">Full Name *</label>
+                  <input type="text" id="admin-user-name" placeholder="e.g. Sok Chea" required />
+                </div>
+                <div class="form-group">
+                  <label for="admin-user-phone">Phone Number</label>
+                  <input type="text" id="admin-user-phone" placeholder="e.g. 012 345 678" />
+                </div>
+              </div>
+              <div class="form-row-three">
+                <div class="form-group">
+                  <label for="admin-user-email">Email Address</label>
+                  <input type="email" id="admin-user-email" placeholder="e.g. sok.chea@ibisrice.com" />
+                </div>
+                <div class="form-group">
+                  <label for="admin-user-role">System Role *</label>
+                  <select id="admin-user-role">
+                    <option value="inspector" selected>Field Inspector</option>
+                    <option value="supervisor">Field Supervisor</option>
+                    <option value="admin">System Administrator</option>
+                  </select>
+                </div>
+                <div class="form-group">
+                  <label for="admin-user-pin">4-Digit Field PIN *</label>
+                  <input type="text" id="admin-user-pin" placeholder="1234" maxlength="6" value="1234" required />
+                </div>
+              </div>
+
+              <!-- Landscape & Village Assignment -->
+              <div class="form-group territory-picker-group">
+                <label>Assigned Conservation Landscapes &amp; Protected Areas *</label>
+                <div class="territory-selection-grid" id="territory-landscapes-grid">
+                  <!-- Dynamically populated landscape checkboxes -->
+                </div>
+              </div>
+
+              <div class="modal-footer" style="padding-top: 10px;">
+                <button type="button" class="secondary-btn" id="btn-dismiss-user-editor">Cancel</button>
+                <button type="submit" class="primary-btn save-btn" id="btn-save-admin-user">💾 Save Inspector Account</button>
+              </div>
+            </form>
+          </div>
+
+          <!-- User Accounts Table -->
+          <div class="admin-table-container">
+            <table class="admin-table">
+              <thead>
+                <tr>
+                  <th>Officer Name</th>
+                  <th>Role</th>
+                  <th>Contact</th>
+                  <th>Field PIN</th>
+                  <th>Assigned Territory</th>
+                  <th>Status</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="admin-users-table-body">
+                <!-- Dynamically loaded -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Tab 2: Master ICS Data Center (Batch CSV Export) -->
+        <div class="admin-tab-panel" id="admin-tab-export" style="display: none;">
+          <div class="ics-export-card">
+            <div class="ics-export-header">
+              <h4>Master Internal Control System (ICS) Data Center</h4>
+              <p>Stream complete certified organic datasets for third-party auditing, EU Organic, USDA NOP compliance, and IRCC harvest procurement.</p>
+            </div>
+
+            <div class="ics-filter-grid">
+              <div class="form-group">
+                <label for="ics-filter-landscape">Landscape / Protected Zone</label>
+                <select id="ics-filter-landscape">
+                  <option value="">All Landscapes (Nationwide)</option>
+                  <option value="Keo Seima">Keo Seima Wildlife Sanctuary</option>
+                  <option value="Preah Vihear">Preah Vihear Conservation Area</option>
+                  <option value="Siem Pang">Siem Pang Wildlife Sanctuary</option>
+                  <option value="Prey Lang">Prey Lang Wildlife Sanctuary</option>
+                  <option value="Lumphat">Lumphat Wildlife Sanctuary</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label for="ics-filter-village">Village Scope</label>
+                <input type="text" id="ics-filter-village" placeholder="All Villages (or enter village name)" />
+              </div>
+
+              <div class="form-group">
+                <label for="ics-filter-season">Audit Season</label>
+                <select id="ics-filter-season">
+                  <option value="2026" selected>Season 2026 (Active)</option>
+                  <option value="2027">Season 2027</option>
+                  <option value="2025">Season 2025</option>
+                </select>
+              </div>
+
+              <div class="form-group">
+                <label for="ics-filter-phase">Milestone Phase Filter</label>
+                <select id="ics-filter-phase">
+                  <option value="">All Milestone Phases</option>
+                  <option value="phase_1">Phase 1: Planting / Growing Completed</option>
+                  <option value="phase_2">Phase 2: Harvest Completed</option>
+                  <option value="phase_3">Phase 3: Post-Harvest Audit Completed</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="ics-export-action-box">
+              <div class="ics-export-meta">
+                <span>Dataset format: <b>Standard ICS Comma-Separated Values (.CSV)</b></span>
+                <span>Includes: <b>Farmer demographics, parcel baseline, variety subplots, yields, harvest kg, post-harvest drying, signatures.</b></span>
+              </div>
+              <button type="button" class="primary-btn export-master-btn" id="btn-download-master-ics">
+                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="7 10 12 15 17 10"></polyline>
+                  <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+                <span>Download Master ICS Dataset (.CSV)</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Tab 3: Annual GIS Ingestion -->
+        <div class="admin-tab-panel" id="admin-tab-gis" style="display: none;">
+          <div class="admin-gis-launcher-card">
+            <h4>Annual Cadastral GIS Boundary Ingestion</h4>
+            <p>Launch the boundary difference analysis engine to detect new plots, splits, and boundary revisions for the upcoming season without altering past historical inspections.</p>
+            <button type="button" class="primary-btn" id="btn-launch-gis-workbench">
+              <span>🗺️ Open GIS Ingestion &amp; Diff Workbench</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast Notification -->
   <div id="toast" class="toast"></div>
 
   </div><!-- /#app-container -->
 
-  <script src="app.js"></script>
+  <script src="app.js?v=2026.31"></script>
 </body>
 </html>
 

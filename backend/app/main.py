@@ -6,7 +6,10 @@ from fastapi.staticfiles import StaticFiles
 
 from .config import settings
 from .database import engine, Base
-from .routers import reference, farmers, parcels, templates, inspections, sync
+from .routers import (
+    auth, reference, farmers, parcels, plots,
+    templates, inspections, traceability, admin_gis, sync, admin_users
+)
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
@@ -14,7 +17,7 @@ Base.metadata.create_all(bind=engine)
 app = FastAPI(
     title=settings.APP_NAME,
     version=settings.APP_VERSION,
-    description="Enterprise Field Inspection & Spatial Intelligence Platform for Ibis Rice Conservation"
+    description="IRCC Enterprise Traceability & Field Management Platform for Ibis Rice Conservation"
 )
 
 # CORS Configuration
@@ -27,11 +30,16 @@ app.add_middleware(
 )
 
 # Mount API Routers
+app.include_router(auth.router, prefix=settings.API_PREFIX)
+app.include_router(admin_users.router, prefix=settings.API_PREFIX)
 app.include_router(reference.router, prefix=settings.API_PREFIX)
 app.include_router(farmers.router, prefix=settings.API_PREFIX)
 app.include_router(parcels.router, prefix=settings.API_PREFIX)
+app.include_router(plots.router, prefix=settings.API_PREFIX)
 app.include_router(templates.router, prefix=settings.API_PREFIX)
 app.include_router(inspections.router, prefix=settings.API_PREFIX)
+app.include_router(traceability.router, prefix=settings.API_PREFIX)
+app.include_router(admin_gis.router, prefix=settings.API_PREFIX)
 app.include_router(sync.router, prefix=settings.API_PREFIX)
 
 @app.get(f"{settings.API_PREFIX}/health", tags=["Health"])
@@ -41,7 +49,9 @@ def health_check():
         "app": settings.APP_NAME,
         "version": settings.APP_VERSION,
         "database": "connected",
-        "active_season": settings.DEFAULT_SEASON
+        "active_season": settings.DEFAULT_SEASON,
+        "traceability_engine": "online",
+        "gis_diff_engine": "online"
     }
 
 # Mount static frontend files if directory exists

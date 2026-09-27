@@ -10,14 +10,14 @@ sys.path.insert(0, str(BASE_DIR))
 
 from backend.app.database import engine, SessionLocal, Base
 from backend.app.models import (
-    Season, Landscape, Commune, Village, RiceVariety,
-    Farmer, HouseholdProfile, Parcel, Plot, QuestionDefinition
+    Season, RiceVariety, QuestionDefinition
 )
+from backend.app.services.gis_engine import commit_gis_ingestion
 
 import argparse
 
 def run_migration(geojson_file=None, season_code="2026"):
-    print(f"=== STARTING ANNUAL GIS INGESTION FOR SEASON {season_code} ===")
+    print(f"=== STARTING ENTERPRISE GIS INGESTION & VERSIONING FOR SEASON {season_code} ===")
     
     # Ensure tables are created
     Base.metadata.create_all(bind=engine)
@@ -36,15 +36,8 @@ def run_migration(geojson_file=None, season_code="2026"):
                 db.add(Season(**s))
         db.commit()
         
-        target_season = db.query(Season).filter(Season.code == season_code).first()
-        if not target_season:
-            target_season = Season(code=season_code, name=f"ICS Season {season_code}", is_active=True)
-            db.add(target_season)
-            db.commit()
-            db.refresh(target_season)
-        
         # 2. Seed Rice Varieties
-        print("-> Seeding Rice Varieties...")
+        print("-> Seeding Certified Rice Varieties...")
         varieties_data = [
             {"code": "PKR", "name_en": "Phka Rumduol (Standard Organic)", "name_kh": "ផ្ការំដួល", "is_organic_certified": True},
             {"code": "RED", "name_en": "Red Jasmine (Special Organic)", "name_kh": "ផ្កាម្លិះក្រហម", "is_organic_certified": True},
@@ -90,7 +83,14 @@ def run_migration(geojson_file=None, season_code="2026"):
         db.commit()
         
         # 4. Ingest GeoJSON Features
-        geojson_path = BASE_DIR / "public" / "data" / "plots.geojson"
+        if geojson_file:
+            geojson_path = Path(geojson_file)
+        else:
+            # Fallback path checks
+            cand1 = BASE_DIR / "all_ibis_rice_plots.geojson"
+            cand2 = BASE_DIR / "public" / "data" / "plots.geojson"
+            geojson_path = cand1 if cand1.exists() else cand2
+            
         if not geojson_path.exists():
             print(f"Error: {geojson_path} does not exist!")
             return
@@ -99,123 +99,16 @@ def run_migration(geojson_file=None, season_code="2026"):
         with open(geojson_path, "r", encoding="utf-8") as f:
             data = json.load(f)
             
-        features = data.get("features", [])
-        print(f"-> Found {len(features)} plot features to process.")
-        
-        # In-memory caches to minimize DB queries
-        landscapes_map = {l.name: l.id for l in db.query(Landscape).all()}
-        communes_map = {} # (landscape_id, commune_name) -> id
-        for c in db.query(Commune).all():
-            communes_map[(c.landscape_id, c.name)] = c.id
-        villages_map = {} # (commune_id, village_name) -> id
-        for v in db.query(Village).all():
-            villages_map[(v.commune_id, v.name)] = v.id
-            
-        farmers_map = {} # (village_id, family_code.lower()) -> id
-        for fm in db.query(Farmer).all():
-            farmers_map[(fm.village_id, fm.family_code.strip().lower())] = fm.id
-            
-        imported_parcels = 0
-        batch_size = 500
-        
-        for idx, ft in enumerate(features):
-            props = ft.get("properties", {})
-            geom = ft.get("geometry", {})
-            
-            site_name = (props.get("site") or "Unknown Landscape").strip()
-            commune_name = (props.get("commune") or "Unknown Commune").strip()
-            village_name = (props.get("village") or "Unknown Village").strip()
-            family_id = str(props.get("family_id") or "Unknown").strip()
-            farmer_name = (props.get("farmer_name") or f"Family {family_id}").strip()
-            plot_id = props.get("plot_id") or (idx + 1)
-            area_ha = float(props.get("area_ha") or props.get("calc_area_ha") or 0.0)
-            lat = float(props.get("lat") or 0.0)
-            lng = float(props.get("lng") or 0.0)
-            
-            # Resolve Landscape
-            if site_name not in landscapes_map:
-                ls = Landscape(name=site_name)
-                db.add(ls)
-                db.commit()
-                landscapes_map[site_name] = ls.id
-            landscape_id = landscapes_map[site_name]
-            
-            # Resolve Commune
-            commune_key = (landscape_id, commune_name)
-            if commune_key not in communes_map:
-                cm = Commune(landscape_id=landscape_id, name=commune_name)
-                db.add(cm)
-                db.commit()
-                communes_map[commune_key] = cm.id
-            commune_id = communes_map[commune_key]
-            
-            # Resolve Village
-            village_key = (commune_id, village_name)
-            if village_key not in villages_map:
-                vl = Village(commune_id=commune_id, name=village_name)
-                db.add(vl)
-                db.commit()
-                villages_map[village_key] = vl.id
-            village_id = villages_map[village_key]
-            
-            # Resolve Farmer (Village + Family ID)
-            farmer_key = (village_id, family_id.lower())
-            if farmer_key not in farmers_map:
-                fm = Farmer(
-                    village_id=village_id,
-                    family_code=family_id,
-                    head_name=farmer_name,
-                    gender="male",
-                    compliance_status="compliant"
-                )
-                db.add(fm)
-                db.flush()
-                farmers_map[farmer_key] = fm.id
-            farmer_db_id = farmers_map[farmer_key]
-            
-            # Add or update Parcel for target season
-            existing_parcel = db.query(Parcel).filter(
-                Parcel.season_id == target_season.id,
-                Parcel.farmer_id == farmer_db_id,
-                Parcel.parcel_code == f"Plot {plot_id}"
-            ).first()
-            
-            if not existing_parcel:
-                parcel = Parcel(
-                    season_id=target_season.id,
-                    farmer_id=farmer_db_id,
-                    parcel_code=f"Plot {plot_id}",
-                    lat=lat,
-                    lng=lng,
-                    gis_area_ha=round(area_ha, 4),
-                    geom_geojson=json.dumps(geom),
-                    inspection_status="pending",
-                    land_tenure="titled",
-                    irrigation_type="rainfed"
-                )
-                db.add(parcel)
-                db.flush()
-                
-                # Add Plot record
-                db.add(Plot(
-                    parcel_id=parcel.id,
-                    plot_number=int(plot_id) if str(plot_id).isdigit() else idx + 1,
-                    name=f"Plot {plot_id}"
-                ))
-            else:
-                # Update geometry if GIS remapped
-                existing_parcel.geom_geojson = json.dumps(geom)
-                existing_parcel.gis_area_ha = round(area_ha, 4)
-                existing_parcel.lat = lat
-                existing_parcel.lng = lng
-            
-            imported_parcels += 1
-            if imported_parcels % batch_size == 0:
-                db.commit()
-                print(f"  Processed {imported_parcels} / {len(features)} parcels for Season {season_code}...")
-                
-        db.commit()
-        print(f"=== INGESTION COMPLETE! Processed {imported_parcels} parcels for Season {season_code}. ===")
+        result = commit_gis_ingestion(
+            db=db,
+            data=data,
+            season_code=season_code,
+            source_filename=geojson_path.name
+        )
+        print(f"=== INGESTION COMPLETE! ===")
+        print(f"  • Total Processed: {result['total_processed']}")
+        print(f"  • New Plots Registered: {result['new_plots_created']}")
+        print(f"  • Geometries Versioned for Season {season_code}: {result['geometries_updated']}")
         
     except Exception as e:
         db.rollback()

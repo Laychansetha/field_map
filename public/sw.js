@@ -1,4 +1,4 @@
-const CACHE_NAME = 'ibis-field-navigator-v19';
+const CACHE_NAME = 'ibis-field-navigator-v51';
 
 const PRECACHE_URLS = [
   './',
@@ -47,8 +47,36 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
-  // For app shell and local data, use Cache First strategy
+  // Dynamic backend API calls: always bypass service worker cache
+  if (url.pathname.startsWith('/api/')) {
+    event.respondWith(fetch(event.request));
+    return;
+  }
+
+  // For origin assets
   if (url.origin === location.origin) {
+    // App shell files: Network First with cache fallback (ensures immediate visibility of updates)
+    const isAppShell = url.pathname === '/' ||
+                       url.pathname.endsWith('.html') ||
+                       url.pathname.endsWith('.js') ||
+                       url.pathname.endsWith('.css');
+
+    if (isAppShell) {
+      event.respondWith(
+        fetch(event.request)
+          .then((networkResponse) => {
+            if (networkResponse && networkResponse.status === 200) {
+              const responseClone = networkResponse.clone();
+              caches.open(CACHE_NAME).then((cache) => cache.put(event.request, responseClone));
+            }
+            return networkResponse;
+          })
+          .catch(() => caches.match(event.request))
+      );
+      return;
+    }
+
+    // Static data / images / vendor files: Cache First with network fallback
     event.respondWith(
       caches.match(event.request).then((cachedResponse) => {
         if (cachedResponse) {
@@ -66,7 +94,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // For external tile maps (ESRI/OSM), try network first, then cache if previously loaded
+  // External tile maps (ESRI/OSM): Network first, fallback to cache
   event.respondWith(
     fetch(event.request)
       .then((networkResponse) => {
@@ -83,3 +111,4 @@ self.addEventListener('fetch', (event) => {
       })
   );
 });
+

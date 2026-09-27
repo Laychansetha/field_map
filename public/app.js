@@ -28,6 +28,24 @@
   // --- Subplot Inspection State ---
   const SUBPLOTS_STORAGE_KEY = 'ibis_inspection_subplots_v1';
   const DIVISION_LINES_STORAGE_KEY = 'ibis_plot_division_lines_v1';
+
+  // --- Automated One-Time Clean Reset Check for Browser Clients ---
+  const DB_CLEAN_VERSION = 'clean_fresh_2026_v1';
+  if (localStorage.getItem('ibis_clean_reset') !== DB_CLEAN_VERSION) {
+    const keysToPurge = [
+      'ibis_inspection_subplots_v1',
+      'ibis_plot_division_lines_v1',
+      'ibis_farmers_v2',
+      'ibis_ics_2026_inspections_v2',
+      'ibis_farmers_v1',
+      'ibis_inspections_v1',
+      'ibis_offline_inspections',
+      'ibis_offline_queue'
+    ];
+    keysToPurge.forEach((k) => localStorage.removeItem(k));
+    localStorage.setItem('ibis_clean_reset', DB_CLEAN_VERSION);
+    console.log('[System] All client testing data successfully purged for fresh deployment.');
+  }
   let subplots = []; // Array of saved subplots
   let divisionLines = {}; // { [plotId]: [ [[lat,lng], ...], ... ] }
   let subplotsLayerGroup = null; // Leaflet LayerGroup for rendered subplots
@@ -54,6 +72,7 @@
   const searchSuggestions = document.getElementById('search-suggestions');
 
   const btnToggleFilters = document.getElementById('btn-toggle-filters');
+  const btnCloseFilterPanel = document.getElementById('btn-close-filter-panel');
   const filterPanel = document.getElementById('filter-panel');
   const filterSite = document.getElementById('filter-site');
   const filterVillage = document.getElementById('filter-village');
@@ -156,6 +175,7 @@
         .register('sw.js')
         .then((reg) => {
           console.log('[SW] Registered successfully:', reg.scope);
+          try { reg.update(); } catch(e) {}
           updateOnlineStatus();
         })
         .catch((err) => {
@@ -168,12 +188,16 @@
   }
 
   function updateOnlineStatus() {
-    if (navigator.onLine) {
-      offlineBadge.innerHTML = '<span class="status-dot"></span> Online & Cached';
-      offlineBadge.style.color = '#4ade80';
-    } else {
-      offlineBadge.innerHTML = '<span class="status-dot"></span> Offline Mode';
-      offlineBadge.style.color = '#f59e0b';
+    if (offlineBadge) {
+      if (navigator.onLine) {
+        offlineBadge.innerHTML = '<span class="status-dot"></span> Online & Cached';
+        offlineBadge.style.color = '#4ade80';
+      } else {
+        offlineBadge.innerHTML = '<span class="status-dot"></span> Offline Mode';
+        offlineBadge.style.color = '#f59e0b';
+      }
+    }
+    if (!navigator.onLine) {
       showToast('Running completely offline from local cache');
     }
   }
@@ -210,6 +234,8 @@
 
   // --- Viewport-based lazy rendering state ---
   let allFeatures = []; // All GeoJSON features, kept in memory
+  let masterFeatures = []; // Unfiltered nationwide GeoJSON features
+  let masterSearchIndex = []; // Unfiltered nationwide search index
   let renderedIds = new Set(); // IDs of currently rendered features
   let renderThrottle = null;
 
@@ -323,10 +349,12 @@
       const indexResp = await fetch('data/index.json');
       if (!indexResp.ok) throw new Error(`HTTP ${indexResp.status} loading index.json`);
       const indexData = await indexResp.json();
-      searchIndex = indexData.plots || [];
+      masterSearchIndex = indexData.plots || [];
+      searchIndex = masterSearchIndex;
       hierarchy = indexData.hierarchy || {};
 
       populateSiteFilter();
+      renderQuickExploreSanctuaries();
       filterStatusText.textContent = `${searchIndex.length.toLocaleString()} plots ready`;
 
       // 2. Fetch GeoJSON geometries (large file)
@@ -334,12 +362,15 @@
       if (!geoResp.ok) throw new Error(`HTTP ${geoResp.status} loading plots.geojson`);
       plotsGeojson = await geoResp.json();
 
-      // Store all features for viewport-based rendering
-      allFeatures = plotsGeojson.features || [];
-      console.log(`[Data] Loaded ${allFeatures.length} plot features`);
+      // Store master features for territory-based filtering
+      masterFeatures = plotsGeojson.features || [];
+      allFeatures = masterFeatures;
+      console.log(`[Data] Loaded ${masterFeatures.length} plot features`);
 
-      // Initial render: all plots (first load at country-level zoom)
-      renderGeoJsonLayer(plotsGeojson);
+      renderQuickExploreSanctuaries();
+
+      // Initial render: respects any active inspector territory filter
+      applyUserTerritoryFilter(true);
       showToast(`${searchIndex.length.toLocaleString()} plots loaded`);
     } catch (err) {
       console.error('Error loading plot data:', err);
@@ -357,8 +388,8 @@
 
     // 1. Check if complete inspection confirmed for this farmer in current season
     if (farmerRecord && farmerRecord.confirmation && farmerRecord.confirmation.is_completed) {
-      const compliance = farmerRecord.profile ? farmerRecord.profile.compliance_status : null;
-      if (compliance === '2' || compliance === '4') {
+      const compliance = farmerRecord.farmer_compliant || (farmerRecord.profile ? farmerRecord.profile.compliance_status : null);
+      if (compliance === 'Non-Compliance' || compliance === 'Resign' || compliance === '2' || compliance === '3' || compliance === '4') {
         return 'non_compliant';
       }
       return 'completed';
@@ -374,7 +405,172 @@
     return 'pending';
   }
 
+  function isSelectedPlot(p) {
+    if (!p || !selectedPlot) return false;
+    if (p.id !== undefined && selectedPlot.id !== undefined && String(p.id) === String(selectedPlot.id)) {
+      return true;
+    }
+    if (p.plot_id !== undefined && selectedPlot.plot_id !== undefined && p.family_id !== undefined && selectedPlot.family_id !== undefined) {
+      return String(p.family_id) === String(selectedPlot.family_id) && String(p.plot_id) === String(selectedPlot.plot_id);
+    }
+    return false;
+  }
+
+  // --- Sanctuary Site Colors & Metadata System ---
+  const SANCTUARY_SITES = {
+    'Preah Vihear': {
+      name: 'Preah Vihear',
+      canonicalName: 'Preah Vihear',
+      icon: '🦅',
+      color: '#34d399',       // Emerald Green
+      fillColor: '#059669',
+      bgGlow: 'rgba(52, 211, 153, 0.16)',
+      borderColor: 'rgba(52, 211, 153, 0.45)',
+      activeBg: 'rgba(52, 211, 153, 0.35)',
+      description: 'Preah Vihear Protected Landscape'
+    },
+    'Preay Lang': {
+      name: 'Preay Lang',
+      canonicalName: 'Preay Lang',
+      altNames: ['preay lang', 'prey lang'],
+      icon: '🌳',
+      color: '#22d3ee',       // Cyan / Teal
+      fillColor: '#0891b2',
+      bgGlow: 'rgba(34, 211, 238, 0.16)',
+      borderColor: 'rgba(34, 211, 238, 0.45)',
+      activeBg: 'rgba(34, 211, 238, 0.35)',
+      description: 'Preay Lang Wildlife Sanctuary'
+    },
+    'Prey Lang': {
+      name: 'Preay Lang',
+      canonicalName: 'Preay Lang',
+      altNames: ['preay lang', 'prey lang'],
+      icon: '🌳',
+      color: '#22d3ee',
+      fillColor: '#0891b2',
+      bgGlow: 'rgba(34, 211, 238, 0.16)',
+      borderColor: 'rgba(34, 211, 238, 0.45)',
+      activeBg: 'rgba(34, 211, 238, 0.35)',
+      description: 'Preay Lang Wildlife Sanctuary'
+    },
+    'Siem Pang': {
+      name: 'Siem Pang',
+      canonicalName: 'Siem Pang',
+      icon: '🦜',
+      color: '#fb7185',       // Rose / Coral
+      fillColor: '#e11d48',
+      bgGlow: 'rgba(251, 113, 133, 0.16)',
+      borderColor: 'rgba(251, 113, 133, 0.45)',
+      activeBg: 'rgba(251, 113, 133, 0.35)',
+      description: 'Siem Pang Wildlife Sanctuary'
+    },
+    'Veun Sai': {
+      name: 'Veun Sai',
+      canonicalName: 'Veun Sai',
+      altNames: ['veun sai', 'vuen sai'],
+      icon: '🌺',
+      color: '#c084fc',       // Purple / Amethyst
+      fillColor: '#9333ea',
+      bgGlow: 'rgba(192, 132, 252, 0.16)',
+      borderColor: 'rgba(192, 132, 252, 0.45)',
+      activeBg: 'rgba(192, 132, 252, 0.35)',
+      description: 'Veun Sai National Park'
+    },
+    'Vuen Sai': {
+      name: 'Veun Sai',
+      canonicalName: 'Veun Sai',
+      altNames: ['veun sai', 'vuen sai'],
+      icon: '🌺',
+      color: '#c084fc',
+      fillColor: '#9333ea',
+      bgGlow: 'rgba(192, 132, 252, 0.16)',
+      borderColor: 'rgba(192, 132, 252, 0.45)',
+      activeBg: 'rgba(192, 132, 252, 0.35)',
+      description: 'Veun Sai National Park'
+    },
+    'Lumphat': {
+      name: 'Lumphat',
+      canonicalName: 'Lumphat',
+      icon: '🐘',
+      color: '#fbbf24',       // Amber / Gold
+      fillColor: '#d97706',
+      bgGlow: 'rgba(251, 191, 36, 0.16)',
+      borderColor: 'rgba(251, 191, 36, 0.45)',
+      activeBg: 'rgba(251, 191, 36, 0.35)',
+      description: 'Lumphat Wildlife Sanctuary'
+    },
+    'Keo Seima': {
+      name: 'Keo Seima',
+      canonicalName: 'Keo Seima',
+      icon: '🐒',
+      color: '#4ade80',       // Spring Green
+      fillColor: '#16a34a',
+      bgGlow: 'rgba(74, 222, 128, 0.16)',
+      borderColor: 'rgba(74, 222, 128, 0.45)',
+      activeBg: 'rgba(74, 222, 128, 0.35)',
+      description: 'Keo Seima Wildlife Sanctuary'
+    }
+  };
+
+  function getSiteConfig(rawSiteName) {
+    if (!rawSiteName) return {
+      name: 'Conservation Zone',
+      canonicalName: 'Conservation Zone',
+      icon: '🌿',
+      color: '#10b981',
+      fillColor: '#059669',
+      bgGlow: 'rgba(16, 185, 129, 0.16)',
+      borderColor: 'rgba(16, 185, 129, 0.45)',
+      activeBg: 'rgba(16, 185, 129, 0.35)'
+    };
+    const clean = String(rawSiteName).trim();
+    if (SANCTUARY_SITES[clean]) return SANCTUARY_SITES[clean];
+
+    const lower = clean.toLowerCase();
+    for (const k in SANCTUARY_SITES) {
+      if (k.toLowerCase() === lower) return SANCTUARY_SITES[k];
+      if (SANCTUARY_SITES[k].altNames && SANCTUARY_SITES[k].altNames.includes(lower)) {
+        return SANCTUARY_SITES[k];
+      }
+    }
+    return {
+      name: clean,
+      canonicalName: clean,
+      icon: '🌿',
+      color: '#38bdf8',
+      fillColor: '#0284c7',
+      bgGlow: 'rgba(56, 189, 248, 0.16)',
+      borderColor: 'rgba(56, 189, 248, 0.45)',
+      activeBg: 'rgba(56, 189, 248, 0.35)'
+    };
+  }
+
   function getPlotStyle(p) {
+    // Persistent Selection Highlight while Information Panel (drawer) is open
+    const isDrawerOpen = plotDrawer && !plotDrawer.classList.contains('closed');
+    if (p && selectedPlot && isDrawerOpen && isSelectedPlot(p)) {
+      return {
+        color: '#00f0ff',       // Cyan highlight border
+        weight: 3.5,
+        fillColor: '#facc15',   // Bright gold fill
+        fillOpacity: 0.65,
+        smoothFactor: 1.0
+      };
+    }
+
+    if (!currentUser) {
+      // General Public: Color-coded by Sanctuary Site for clear visual distinction
+      const siteConfig = getSiteConfig(p ? (p.site || p.landscape) : null);
+      return {
+        color: siteConfig.color,          // Distinct site border color
+        weight: 1.8,
+        fillColor: siteConfig.fillColor,   // Distinct site fill color
+        fillOpacity: 0.42,
+        smoothFactor: 1.5
+      };
+    }
+
+    // Authenticated Field Officers & Admin: Inspection workflow status coloring
     const status = getPlotInspectionStatus(p);
     switch (status) {
       case 'completed':
@@ -424,7 +620,23 @@
   function refreshAllPlotStyles() {
     plotLayersById.forEach((layer) => {
       if (layer && layer.feature && layer.feature.properties) {
-        layer.setStyle(getPlotStyle(layer.feature.properties));
+        const p = layer.feature.properties;
+        layer.setStyle(getPlotStyle(p));
+        // Tooltips on hover: completely removed for general users, only available when clicking on the plot.
+        if (currentUser) {
+          const status = getPlotInspectionStatus(p);
+          let statusBadge = '<span style="color: #60a5fa;">🔵 Pending Inspection</span>';
+          if (status === 'completed') statusBadge = '<span style="color: #34d399; font-weight: bold;">🟢 Completed (Inspected)</span>';
+          else if (status === 'in_progress') statusBadge = '<span style="color: #fbbf24; font-weight: bold;">🟡 In Progress</span>';
+          else if (status === 'non_compliant') statusBadge = '<span style="color: #f87171; font-weight: bold;">🔴 Non-Compliant</span>';
+
+          layer.bindTooltip(
+            `<b>${p.family_id}</b> · Plot ${p.plot_id}<br><small>${p.village}</small><br>${statusBadge}`,
+            { className: 'plot-label-tooltip', direction: 'top', sticky: true }
+          );
+        } else if (layer.unbindTooltip) {
+          layer.unbindTooltip();
+        }
       }
     });
     updateInspectionProgressCounts();
@@ -453,6 +665,105 @@
     if (elProg) elProg.textContent = inProgress.toLocaleString();
     if (elPend) elPend.textContent = pending.toLocaleString();
     if (elSeasonBadge) elSeasonBadge.textContent = currentSeason;
+
+    // Update Inspector Sidebar KPIs
+    const sideComp = document.getElementById('sidebar-kpi-completed');
+    const sideProg = document.getElementById('sidebar-kpi-inprogress');
+    const sidePend = document.getElementById('sidebar-kpi-pending');
+    const sideSeason = document.getElementById('sidebar-kpi-season');
+
+    if (sideComp) sideComp.textContent = completed.toLocaleString();
+    if (sideProg) sideProg.textContent = inProgress.toLocaleString();
+    if (sidePend) sidePend.textContent = pending.toLocaleString();
+    if (sideSeason) sideSeason.textContent = currentSeason;
+  }
+
+  // --- Inspector Territory Scoping & Filtering ---
+  function isFeatureInTerritory(props, assignedLands, assignedVills) {
+    if (!props) return false;
+    const site = (props.site || props.landscape || '').trim().toLowerCase();
+    const village = (props.village || '').trim().toLowerCase();
+
+    // 1. If assigned specific villages:
+    if (assignedVills && assignedVills.length > 0) {
+      const matchVill = assignedVills.some(v => {
+        if (typeof v === 'string') return v.trim().toLowerCase() === village;
+        return v == props.village_id || v == props.villageId;
+      });
+      if (matchVill) return true;
+    }
+
+    // 2. If assigned landscapes:
+    if (assignedLands && assignedLands.length > 0) {
+      const matchLand = assignedLands.some(l => l.trim().toLowerCase() === site);
+      if (matchLand) {
+        // If no specific villages were restricted for this user, whole landscape matches!
+        if (!assignedVills || assignedVills.length === 0) {
+          return true;
+        }
+      }
+    }
+
+    return false;
+  }
+
+  function applyUserTerritoryFilter(isInitial = false) {
+    if (!masterFeatures || masterFeatures.length === 0) return;
+
+    const territoryBanner = document.getElementById('sidebar-territory-banner');
+    const territoryName = document.getElementById('sidebar-territory-name');
+    const territoryCount = document.getElementById('sidebar-territory-count');
+
+    const isInspector = currentUser && (currentUser.role === 'inspector' || currentUser.role === 'supervisor');
+    const hasTerritory = isInspector && (
+      (currentUser.assigned_landscapes && currentUser.assigned_landscapes.length > 0) ||
+      (currentUser.assigned_villages && currentUser.assigned_villages.length > 0)
+    );
+
+    if (hasTerritory) {
+      const lands = currentUser.assigned_landscapes || [];
+      const vills = currentUser.assigned_villages || [];
+
+      allFeatures = masterFeatures.filter(f => isFeatureInTerritory(f.properties, lands, vills));
+      searchIndex = masterSearchIndex.filter(p => isFeatureInTerritory(p, lands, vills));
+
+      const territoryLabel = lands.join(', ') + (vills.length ? ` (${vills.length} villages)` : '');
+      if (territoryName) territoryName.textContent = territoryLabel || 'Assigned Zone';
+      if (territoryCount) territoryCount.textContent = `${allFeatures.length.toLocaleString()} Plots`;
+      if (territoryBanner) territoryBanner.style.display = 'block';
+
+      renderGeoJsonLayer({ type: 'FeatureCollection', features: allFeatures });
+      populateSiteFilter();
+      updateInspectionProgressCounts();
+
+      if (geojsonLayer && allFeatures.length > 0 && map) {
+        try {
+          const b = geojsonLayer.getBounds();
+          if (b && b.isValid()) {
+            map.fitBounds(b, { padding: [30, 30], maxZoom: 15 });
+          }
+        } catch (e) {}
+      }
+      showToast(`📍 Scoped to assigned territory: ${allFeatures.length} plots`);
+    } else {
+      // Nationwide (Public or Admin)
+      allFeatures = masterFeatures;
+      searchIndex = masterSearchIndex;
+
+      if (territoryName) territoryName.textContent = 'Nationwide (All Landscapes)';
+      if (territoryCount) territoryCount.textContent = `${allFeatures.length.toLocaleString()} Plots`;
+      if (territoryBanner) territoryBanner.style.display = currentUser ? 'block' : 'none';
+
+      renderGeoJsonLayer({ type: 'FeatureCollection', features: allFeatures });
+      populateSiteFilter();
+      updateInspectionProgressCounts();
+
+      if (!isInitial && map && plotsGeojson) {
+        try {
+          if (btnFitPlots) btnFitPlots.click();
+        } catch (e) {}
+      }
+    }
   }
 
   // --- Render Plots on Map ---
@@ -488,13 +799,13 @@
             if (p) {
               // Sync with searchIndex to get full plot object
               const fullPlot = searchIndex.find(s => s.id === p.id) || p;
-              selectPlot(fullPlot);
-              openPlotMapPopup(fullPlot, layer, e.latlng);
+              selectPlot(fullPlot, true);
             }
           });
 
-          // Tooltip on hover with dynamic inspection status badge
-          if (p) {
+          // Tooltip on hover: completely removed for general users (only shown upon clicking/searching the plot).
+          // Logged-in inspectors/staff will see inspection status tooltip on hover.
+          if (p && currentUser) {
             const status = getPlotInspectionStatus(p);
             let statusBadge = '<span style="color: #60a5fa;">🔵 Pending Inspection</span>';
             if (status === 'completed') statusBadge = '<span style="color: #34d399; font-weight: bold;">🟢 Completed (Inspected)</span>';
@@ -549,8 +860,10 @@
     renderGeoJsonLayer(newGeojson);
   }
 
-  // --- Interactive Plot Map Popup ---
+  // --- Interactive Plot Map Popup (Staff / Field Inspector Only) ---
   function openPlotMapPopup(plotProps, layer, latlng) {
+    if (!currentUser) return; // General public users do not have access to drawing/editing subplots
+
     const plotSubplots = subplots.filter((s) => s.parent_plot_id === plotProps.id);
     const subplotsCount = plotSubplots.length;
 
@@ -565,9 +878,6 @@
         <div class="popup-title">Family ${escapeHtml(plotProps.family_id)} · Plot ${escapeHtml(plotProps.plot_id)}</div>
         <div class="popup-meta"><b>${plotProps.area_ha || 0} ha</b> · ${escapeHtml(plotProps.village)}, ${escapeHtml(plotProps.site)}</div>
         <div class="popup-meta">${subplotsSummary}</div>
-        <button class="popup-draw-btn" id="popup-draw-btn-${plotProps.id}" onclick="window.ibisStartSubplotDrawing && window.ibisStartSubplotDrawing(${plotProps.id})">
-          ✏️ + Draw Subplot
-        </button>
       </div>
     `;
 
@@ -578,21 +888,14 @@
       .setLatLng(latlng || [plotProps.lat, plotProps.lng])
       .setContent(popupHtml)
       .openOn(map);
-
-    setTimeout(() => {
-      const drawBtn = document.getElementById(`popup-draw-btn-${plotProps.id}`);
-      if (drawBtn) {
-        drawBtn.addEventListener('click', (e) => {
-          e.stopPropagation();
-          map.closePopup();
-          startSubplotDrawing(plotProps);
-        });
-      }
-    }, 50);
   }
 
   // Expose for inline popup button
   window.ibisStartSubplotDrawing = function (plotId) {
+    if (!currentUser) {
+      showToast('Inspector login required to sketch subplots');
+      return;
+    }
     map.closePopup();
     let plot = searchIndex.find((p) => p.id === plotId);
     if (!plot && selectedPlot && selectedPlot.id === plotId) plot = selectedPlot;
@@ -602,6 +905,7 @@
   // --- Plot Selection & Drawer Display ---
   function selectPlot(plotProps, shouldFly = true) {
     selectedPlot = plotProps;
+    if (map) map.closePopup();
     renderAllStoredSubplotsOnMap();
 
     // Reset previous layer highlight
@@ -629,29 +933,54 @@
       selectedLayer.bringToFront();
     }
 
-    // Try to highlight existing layer
+    // Try to highlight existing layer and zoom closely to the plot
     const existingLayer = plotLayersById.get(plotProps.id);
+    const paddingOptions = window.innerWidth >= 768
+      ? { paddingTopLeft: [480, 50], paddingBottomRight: [50, 50] }
+      : { paddingTopLeft: [20, 20], paddingBottomRight: [20, 20] };
+
     if (existingLayer) {
       highlightLayer(existingLayer);
       if (shouldFly) {
-        if (existingLayer.getBounds) {
-          map.flyToBounds(existingLayer.getBounds(), { maxZoom: 17, duration: 1.2, padding: [60, 60] });
-        } else {
-          map.flyTo([plotProps.lat, plotProps.lng], 16, { duration: 1.2 });
+        if (existingLayer.getBounds && typeof existingLayer.getBounds === 'function') {
+          map.flyToBounds(existingLayer.getBounds(), {
+            maxZoom: 18,
+            duration: 1.3,
+            ...paddingOptions
+          });
+        } else if (plotProps.lat && plotProps.lng) {
+          map.flyTo([plotProps.lat, plotProps.lng], 18, { duration: 1.3 });
         }
       }
     } else if (shouldFly && plotProps.lat && plotProps.lng) {
-      // Plot layer not yet rendered - fly to location and re-highlight after render
-      map.flyTo([plotProps.lat, plotProps.lng], 16, { duration: 1.2 });
+      // Plot layer not yet rendered - calculate bounds from allFeatures if available
+      const feature = allFeatures.find(f => f.properties && f.properties.id === plotProps.id);
+      let targetBounds = null;
+      if (feature) {
+        try {
+          targetBounds = L.geoJSON(feature).getBounds();
+        } catch (err) {
+          targetBounds = null;
+        }
+      }
+
+      if (targetBounds && targetBounds.isValid && targetBounds.isValid()) {
+        map.flyToBounds(targetBounds, {
+          maxZoom: 18,
+          duration: 1.3,
+          ...paddingOptions
+        });
+      } else {
+        map.flyTo([plotProps.lat, plotProps.lng], 18, { duration: 1.3 });
+      }
 
       // After flying, ensure the plot is rendered and highlighted
       const onMoveEnd = () => {
         map.off('moveend', onMoveEnd);
         // Ensure this plot's feature is in the rendered layer
-        const feature = allFeatures.find(f => f.properties && f.properties.id === plotProps.id);
-        if (feature && !plotLayersById.has(plotProps.id)) {
-          // Add just this one feature to render
-          const singleFeature = { type: 'FeatureCollection', features: [feature] };
+        const feat = allFeatures.find(f => f.properties && f.properties.id === plotProps.id);
+        if (feat && !plotLayersById.has(plotProps.id)) {
+          const singleFeature = { type: 'FeatureCollection', features: [feat] };
           try {
             const tmpLayer = L.geoJSON(singleFeature, {
               style: () => ({
@@ -662,7 +991,6 @@
                 smoothFactor: 1.5
               })
             }).addTo(map);
-            // Track as selected layer so it gets reset on next selection
             selectedLayer = { setStyle: () => {}, getBounds: () => tmpLayer.getBounds() };
           } catch(e) { console.warn('Could not render single plot:', e); }
         } else {
@@ -686,11 +1014,94 @@
     cardYear.textContent = plotProps.year_join || 'N/A';
     cardCoords.textContent = `${plotProps.lat.toFixed(5)}, ${plotProps.lng.toFixed(5)}`;
 
+    // Populate Traceability Origin Card (Hidden for inspectors/staff, visible for public)
+    const traceOriginCard = document.getElementById('traceability-origin-card');
+    if (traceOriginCard) {
+      traceOriginCard.style.display = currentUser ? 'none' : 'block';
+    }
+    const traceVillage = document.getElementById('trace-village-name');
+    const traceLandscape = document.getElementById('trace-landscape-name');
+    const traceCoords = document.getElementById('trace-coords');
+    const traceStatusBadge = document.getElementById('traceability-status-badge');
+    const traceVarietyPill = document.getElementById('trace-variety-pill');
+
+    if (traceVillage) traceVillage.textContent = plotProps.village || 'Community Conservation';
+    if (traceLandscape) traceLandscape.textContent = `${plotProps.site} Wildlife Sanctuary`;
+    if (traceCoords) traceCoords.textContent = `${plotProps.lat.toFixed(5)}, ${plotProps.lng.toFixed(5)}`;
+
+    const currentPlotStatus = getPlotInspectionStatus(plotProps, currentSeason);
+    if (traceStatusBadge) {
+      traceStatusBadge.style.display = currentUser ? 'inline-block' : 'none';
+      if (currentPlotStatus === 'completed') {
+        traceStatusBadge.className = 'origin-status-pill status-pill-completed staff-only';
+        traceStatusBadge.textContent = `🟢 Verified Compliant (${currentSeason})`;
+      } else {
+        traceStatusBadge.className = 'origin-status-pill status-pill-pending staff-only';
+        traceStatusBadge.textContent = `🔴 Pending Field Inspection (${currentSeason})`;
+      }
+    }
+
+    // Populate Production, Harvest & Commercial Traceability metrics
+    const traceExpectedProd = document.getElementById('trace-expected-prod');
+    const traceExpectedRate = document.getElementById('trace-expected-rate');
+    const traceActualHarvest = document.getElementById('trace-actual-harvest');
+    const traceHarvestStatus = document.getElementById('trace-harvest-status');
+    const traceSoldVolume = document.getElementById('trace-sold-volume');
+    const traceBuyerLabel = document.getElementById('trace-buyer-label');
+
+    const areaHa = Number(plotProps.area_ha) || 0;
+    const estYieldMT = areaHa > 0 ? (areaHa * 1.5).toFixed(2) : '0.00';
+    if (traceExpectedProd) traceExpectedProd.textContent = `${estYieldMT} MT`;
+    if (traceExpectedRate) traceExpectedRate.textContent = `${areaHa.toFixed(2)} ha @ 1.5 MT/ha`;
+
+    // Check if subplots or inspection have recorded harvest
+    const plotSubplots = subplots.filter(s => s.parent_plot_id === plotProps.id);
+    let totalHarvestKg = 0;
+    let totalSoldKg = 0;
+    let hasHarvestRecord = false;
+
+    plotSubplots.forEach(sp => {
+      if (sp.harvest_kg) {
+        totalHarvestKg += Number(sp.harvest_kg) || 0;
+        hasHarvestRecord = true;
+      }
+      if (sp.sold_kg) {
+        totalSoldKg += Number(sp.sold_kg) || 0;
+      }
+    });
+
+    if (hasHarvestRecord && totalHarvestKg > 0) {
+      if (traceActualHarvest) traceActualHarvest.textContent = `${(totalHarvestKg / 1000).toFixed(2)} tons`;
+      if (traceHarvestStatus) traceHarvestStatus.textContent = 'Harvest Verified';
+      if (traceSoldVolume) traceSoldVolume.textContent = totalSoldKg > 0 ? `${(totalSoldKg / 1000).toFixed(2)} tons` : 'In IRCC Storage';
+      if (traceBuyerLabel) traceBuyerLabel.textContent = '100% Traceable';
+    } else {
+      if (traceActualHarvest) traceActualHarvest.textContent = 'Pending Harvest';
+      if (traceHarvestStatus) traceHarvestStatus.textContent = `Season ${currentSeason}`;
+      if (traceSoldVolume) traceSoldVolume.textContent = 'Allocated';
+      if (traceBuyerLabel) traceBuyerLabel.textContent = 'IRCC Certified Organic';
+    }
+
     // Update subplots list in drawer
     renderSubplotsListForSelectedPlot();
 
     // Load ICS 2026 inspection workflow data for this plot & farmer
     loadICSInspectionForSelectedPlot();
+
+    // Auto-minimize hero discovery card when opening a plot (public)
+    const heroCard = document.getElementById('hero-discovery-card');
+    if (heroCard) heroCard.classList.add('minimized');
+
+    // Update Inspector Sidebar Selected Plot quick dock
+    const sidebarSelectedPlotBox = document.getElementById('sidebar-selected-plot-box');
+    const sidebarSelFamily = document.getElementById('sidebar-sel-family');
+    const sidebarSelArea = document.getElementById('sidebar-sel-area');
+    const sidebarSelMeta = document.getElementById('sidebar-sel-meta');
+
+    if (sidebarSelectedPlotBox) sidebarSelectedPlotBox.style.display = 'block';
+    if (sidebarSelFamily) sidebarSelFamily.textContent = `Family ${plotProps.family_id}`;
+    if (sidebarSelArea) sidebarSelArea.textContent = `${plotProps.area_ha ? Number(plotProps.area_ha).toFixed(2) : '0.00'} ha`;
+    if (sidebarSelMeta) sidebarSelMeta.textContent = `Plot ${plotProps.plot_id} · ${plotProps.village || ''}, ${plotProps.site || ''}`;
 
     // Open drawer
     plotDrawer.classList.remove('closed');
@@ -1019,7 +1430,7 @@
         <div class="subplot-map-badge ${style.class}">
           <div class="sp-line-top">
             <span class="sp-code">${escapeHtml(sp.code)}</span>
-            <span class="sp-variety">${escapeHtml(sp.variety)}</span>
+            <span class="sp-variety">${escapeHtml(sp.variety === 'Local Variety' && sp.local_variety_name ? sp.local_variety_name : sp.variety)}</span>
           </div>
           <div class="sp-line-bottom">
             <span class="sp-area">${sp.area_ha || 0} ha</span>
@@ -1073,7 +1484,7 @@
       drawingSessionLayers.push(marker);
     } else {
       marker.bindTooltip(
-        `<b>${escapeHtml(sp.code)}</b> · ${escapeHtml(sp.variety)}<br>${sp.area_ha} ha (${sp.pct_of_parent || 0}%)<br>${escapeHtml(sp.notes || '')}`,
+        `<b>${escapeHtml(sp.code)}</b> · ${escapeHtml(sp.variety === 'Local Variety' && sp.local_variety_name ? `Local: ${sp.local_variety_name}` : sp.variety)}<br>${sp.area_ha} ha (${sp.pct_of_parent || 0}%)<br>${escapeHtml(sp.notes || '')}`,
         { className: 'plot-label-tooltip', sticky: true, direction: 'top' }
       );
       marker.on('click', (e) => {
@@ -1275,6 +1686,96 @@
     }
   }
 
+  function getNextSubplotName(parentPlotId) {
+    if (!parentPlotId) return 'A';
+    const plotSubplots = subplots.filter((s) => s.parent_plot_id === parentPlotId);
+    const existingNames = new Set(
+      plotSubplots.map((s) => (s.code || '').trim().toUpperCase())
+    );
+    // 1st tier: A, B, C... Z
+    for (let i = 0; i < 26; i++) {
+      const letter = String.fromCharCode(65 + i);
+      if (!existingNames.has(letter)) {
+        return letter;
+      }
+    }
+    // 2nd tier: AA, AB...
+    for (let i = 0; i < 26; i++) {
+      for (let j = 0; j < 26; j++) {
+        const combo = String.fromCharCode(65 + i) + String.fromCharCode(65 + j);
+        if (!existingNames.has(combo)) {
+          return combo;
+        }
+      }
+    }
+    return `Subplot ${plotSubplots.length + 1}`;
+  }
+
+  function updateSubplotFormConditionalFields() {
+    const variety = subplotVariety ? subplotVariety.value : 'Phka Rumduol';
+    const customGroup = document.getElementById('custom-variety-group');
+    const extWrapper = document.getElementById('sp-extended-wrapper');
+
+    if (variety === 'Other' || variety === 'Fallow') {
+      // Keep only: % of Main Plot, Subplot Area (Hectares), Subplot Name, Rice Variety selector
+      if (customGroup) customGroup.style.display = 'none';
+      if (extWrapper) extWrapper.style.display = 'none';
+    } else if (variety === 'Local Variety') {
+      // Keep all existing fields + Exact Local Variety Name text field
+      if (customGroup) customGroup.style.display = 'block';
+      if (extWrapper) extWrapper.style.display = 'block';
+    } else {
+      // Phka Rumduol, Red Jasmine, Sticky Rice
+      if (customGroup) customGroup.style.display = 'none';
+      if (extWrapper) extWrapper.style.display = 'block';
+    }
+  }
+
+  function resetSubplotModalForm() {
+    editingSubplotInstance = null;
+    if (subplotCode) {
+      subplotCode.value = '';
+      subplotCode.placeholder = 'e.g. A';
+    }
+    if (subplotVariety) {
+      subplotVariety.value = 'Phka Rumduol';
+    }
+    if (subplotCustomVariety) {
+      subplotCustomVariety.value = '';
+    }
+    if (subplotNotes) {
+      subplotNotes.value = '';
+    }
+    if (subplotAreaPct) {
+      subplotAreaPct.value = '';
+    }
+    if (subplotAreaHa) {
+      subplotAreaHa.value = '';
+    }
+
+    setVal('sp-seed-source', '');
+    setVal('sp-seed-kg', '');
+    setVal('sp-planting-date', '');
+    setVal('sp-planting-method', '');
+    setVal('sp-fertilizer-toggle', 'no');
+    setChipValues('#sp-fertilizer-chips', []);
+    setVal('sp-fertilizer-qty', '');
+    setVal('sp-fertilizer-date', '');
+    setVal('sp-protection-toggle', 'no');
+    setVal('sp-protection-action', '');
+    setVal('sp-protection-qty', '');
+    setVal('sp-protection-date', '');
+    setVal('sp-expected-yield', '');
+    setVal('sp-expected-sale', '');
+
+    const spFertBlock = document.getElementById('sp-fertilizer-block');
+    if (spFertBlock) spFertBlock.style.display = 'none';
+    const spProtBlock = document.getElementById('sp-protection-block');
+    if (spProtBlock) spProtBlock.style.display = 'none';
+
+    updateSubplotFormConditionalFields();
+  }
+
   function openAddSubplotModal(latlng) {
     pendingSubplotLatLng = [latlng.lat, latlng.lng];
 
@@ -1295,7 +1796,17 @@
     currentModalRemainingPct = remainingPct;
     currentModalRemainingHa = remainingHa;
 
+    // Wipe any existing modal fields completely so new subplot starts 100% blank!
+    resetSubplotModalForm();
+    editingSubplotInstance = null;
+
     modalPlotRef.textContent = `Family ${drawingMainPlot.family_id} · Plot ${drawingMainPlot.plot_id} (${drawingMainPlot.village})`;
+
+    const spStatusPill = document.getElementById('subplot-modal-status-pill');
+    if (spStatusPill) {
+      spStatusPill.className = 'sub-status-pill status-blank';
+      spStatusPill.textContent = '⚪ New Subplot (Blank)';
+    }
 
     // Banner stats
     if (allocMainHa) allocMainHa.textContent = `${parentHa.toFixed(2)} ha`;
@@ -1307,18 +1818,24 @@
     subplotAreaPct.value = remainingPct;
     subplotAreaHa.value = remainingHa;
 
-    // Do not prefill default name - use placeholder as requested
-    subplotCode.value = '';
-    subplotCode.placeholder = 'Please enter subplot name';
-    subplotVariety.value = 'Phka Rumduol';
-    customVarietyGroup.style.display = 'none';
-    subplotCustomVariety.value = '';
+    // Auto-generate subplot name starting from A, B, C, D... based on inspector click to add plots
+    const autoName = getNextSubplotName(drawingMainPlot.id);
+    subplotCode.value = autoName;
+    subplotCode.placeholder = autoName;
+    subplotVariety.value = '';
+    if (subplotCustomVariety) subplotCustomVariety.value = '';
     subplotNotes.value = '';
 
+    updateSubplotFormConditionalFields();
     validateSubplotAllocation();
 
     subplotModal.style.display = 'flex';
-    setTimeout(() => subplotCode.focus(), 80);
+    setTimeout(() => {
+      if (subplotCode) {
+        subplotCode.focus();
+        subplotCode.select();
+      }
+    }, 80);
   }
 
   function updateDrawingStatusText() {
@@ -1332,15 +1849,15 @@
 
     if (drawingMode === 'label') {
       if (totalAllocatedPct >= 99.5) {
-        drawingPointsCount.textContent = `✓ 100% allocated (${plotSubplots.length} subplots). Tap "Done" to save.`;
+        drawingPointsCount.textContent = `✓ 100% allocated (${plotSubplots.length} subplot${plotSubplots.length !== 1 ? 's' : ''}) · Tap "Done" to save.`;
       } else {
-        drawingPointsCount.textContent = `Allocated: ${totalAllocatedPct}% (${roundTo(100 - totalAllocatedPct, 1)}% unallocated). Tap section to label.`;
+        drawingPointsCount.textContent = `Allocated: ${totalAllocatedPct}% (${roundTo(100 - totalAllocatedPct, 1)}% unallocated) · Tap section to label.`;
       }
     } else {
       if (lines.length === 0) {
         drawingPointsCount.textContent = 'Freely draw a line across the plot to divide subplots';
       } else {
-        drawingPointsCount.textContent = `${lines.length} separation line${lines.length > 1 ? 's' : ''} · ${plotSubplots.length} labeled (${totalAllocatedPct}%). Tap "+ Add Subplot" or Done.`;
+        drawingPointsCount.textContent = `${lines.length} separation line${lines.length > 1 ? 's' : ''} · ${plotSubplots.length} labeled (${totalAllocatedPct}%) · Tap "+ Add Subplot" or Done.`;
       }
     }
 
@@ -1487,15 +2004,19 @@
   function onSubplotFormSubmit(e) {
     e.preventDefault();
 
-    const code = subplotCode.value.trim() || 'Subplot';
-    let variety = subplotVariety.value;
-    if (variety === 'Other') {
-      const customVal = subplotCustomVariety.value.trim();
-      variety = customVal ? customVal : 'Other';
+    const currentPlot = drawingMainPlot || selectedPlot;
+    const autoCodeFallback = getNextSubplotName(currentPlot ? currentPlot.id : null);
+    const code = subplotCode.value.trim() || autoCodeFallback;
+    const varietyVal = subplotVariety.value;
+    let variety = varietyVal;
+    let localVarietyName = '';
+
+    if (varietyVal === 'Local Variety') {
+      localVarietyName = subplotCustomVariety ? subplotCustomVariety.value.trim() : '';
     }
 
-    const notes = subplotNotes.value.trim();
-    const currentPlot = drawingMainPlot || selectedPlot;
+    const isFallowOrOther = (varietyVal === 'Other' || varietyVal === 'Fallow');
+    const notes = isFallowOrOther ? '' : subplotNotes.value.trim();
     const parentHa = (currentPlot && currentPlot.area_ha) ? currentPlot.area_ha : 1;
 
     const pct = parseFloat(subplotAreaPct.value) || 0;
@@ -1506,26 +2027,27 @@
       return;
     }
 
-    // Extended ICS 2026 fields
-    const seedSource = document.getElementById('sp-seed-source') ? document.getElementById('sp-seed-source').value : 'Own saved';
-    const seedKg = parseFloat(document.getElementById('sp-seed-kg')?.value) || 0;
-    const plantingDate = document.getElementById('sp-planting-date')?.value || '';
-    const plantingMethod = document.getElementById('sp-planting-method')?.value || 'Direct seeding';
-    const fertApplied = document.getElementById('sp-fertilizer-toggle')?.value === 'yes';
-    const fertTypes = getChipValues('#sp-fertilizer-chips');
-    const fertQty = parseFloat(document.getElementById('sp-fertilizer-qty')?.value) || 0;
-    const fertDate = document.getElementById('sp-fertilizer-date')?.value || '';
-    const protApplied = document.getElementById('sp-protection-toggle')?.value === 'yes';
-    const protAction = document.getElementById('sp-protection-action')?.value.trim() || '';
-    const protQty = parseFloat(document.getElementById('sp-protection-qty')?.value) || 0;
-    const protDate = document.getElementById('sp-protection-date')?.value || '';
-    const expYield = parseFloat(document.getElementById('sp-expected-yield')?.value) || 0;
-    const expSale = parseFloat(document.getElementById('sp-expected-sale')?.value) || 0;
+    // Extended ICS 2026 fields (omitted for Other / Fallow)
+    const seedSource = isFallowOrOther ? '' : (document.getElementById('sp-seed-source') ? document.getElementById('sp-seed-source').value : 'Own saved');
+    const seedKg = isFallowOrOther ? 0 : (parseFloat(document.getElementById('sp-seed-kg')?.value) || 0);
+    const plantingDate = isFallowOrOther ? '' : (document.getElementById('sp-planting-date')?.value || '');
+    const plantingMethod = isFallowOrOther ? (varietyVal === 'Fallow' ? 'Fallow' : '') : (document.getElementById('sp-planting-method')?.value || 'Direct seeding');
+    const fertApplied = isFallowOrOther ? false : (document.getElementById('sp-fertilizer-toggle')?.value === 'yes');
+    const fertTypes = isFallowOrOther ? [] : getChipValues('#sp-fertilizer-chips');
+    const fertQty = isFallowOrOther ? 0 : (parseFloat(document.getElementById('sp-fertilizer-qty')?.value) || 0);
+    const fertDate = isFallowOrOther ? '' : (document.getElementById('sp-fertilizer-date')?.value || '');
+    const protApplied = isFallowOrOther ? false : (document.getElementById('sp-protection-toggle')?.value === 'yes');
+    const protAction = isFallowOrOther ? '' : (document.getElementById('sp-protection-action')?.value.trim() || '');
+    const protQty = isFallowOrOther ? 0 : (parseFloat(document.getElementById('sp-protection-qty')?.value) || 0);
+    const protDate = isFallowOrOther ? '' : (document.getElementById('sp-protection-date')?.value || '');
+    const expYield = isFallowOrOther ? 0 : (parseFloat(document.getElementById('sp-expected-yield')?.value) || 0);
+    const expSale = isFallowOrOther ? 0 : (parseFloat(document.getElementById('sp-expected-sale')?.value) || 0);
 
     // Case 1: Updating an existing subplot (from drawer "Inspect" action)
     if (editingSubplotInstance) {
       editingSubplotInstance.code = code;
       editingSubplotInstance.variety = variety;
+      editingSubplotInstance.local_variety_name = localVarietyName;
       editingSubplotInstance.notes = notes;
       editingSubplotInstance.pct_of_parent = pct;
       editingSubplotInstance.area_ha = areaHa;
@@ -1545,6 +2067,7 @@
       editingSubplotInstance.expected_production_kg = expYield;
       editingSubplotInstance.expected_sale_kg = expSale;
       editingSubplotInstance.inspected = true;
+      editingSubplotInstance.saved = true;
       editingSubplotInstance.updated_at = new Date().toISOString();
 
       saveStoredSubplots();
@@ -1552,7 +2075,8 @@
       renderSubplotsListForSelectedPlot();
       subplotModal.style.display = 'none';
       editingSubplotInstance = null;
-      showToast(`Saved inspection: ${code} (${variety})`);
+      resetSubplotModalForm();
+      showToast(`Saved: Subplot ${code} (${localVarietyName ? `${variety}: ${localVarietyName}` : variety})`);
       return;
     }
 
@@ -1576,6 +2100,7 @@
 
     const newSubplot = {
       id: 'sp_' + Date.now(),
+      saved: true,
       parent_plot_id: drawingMainPlot.id,
       parent_family_id: drawingMainPlot.family_id,
       parent_plot_num: drawingMainPlot.plot_id,
@@ -1584,6 +2109,7 @@
       parent_area_ha: drawingMainPlot.area_ha,
       code: code,
       variety: variety,
+      local_variety_name: localVarietyName,
       notes: notes,
       area_ha: areaHa,
       area_m2: Math.round(areaHa * 10000),
@@ -1621,6 +2147,7 @@
     });
 
     subplotModal.style.display = 'none';
+    resetSubplotModalForm();
     updateDrawingStatusText();
     showToast(`Added ${code}: ${variety} (${pct}%, ${areaHa} ha)`);
   }
@@ -1733,7 +2260,7 @@
     if (plotSubplots.length === 0 && plotLines.length === 0) {
       subplotsList.innerHTML = `
         <div class="subplots-empty">
-          No subplots sketched yet. Tap <b>"+ Draw Subplot"</b> to sketch rice variety parcels for Plot ${escapeHtml(selectedPlot.plot_id)}.
+          No subplots sketched yet. Tap <b>"+ Draw Subplot"</b> above to start dividing this parcel on the map.
         </div>
       `;
       updateParcelHarvestSummary();
@@ -1779,7 +2306,7 @@
         <div class="subplot-card-info">
           <div class="subplot-card-header">
             <span class="subplot-card-code">${escapeHtml(sp.code)}</span>
-            <span class="variety-tag ${style.class}">${escapeHtml(sp.variety)}</span>
+            <span class="variety-tag ${style.class}">${escapeHtml(sp.variety === 'Local Variety' && sp.local_variety_name ? `Local: ${sp.local_variety_name}` : sp.variety)}</span>
             ${badges}
           </div>
           <div class="subplot-card-meta">
@@ -1958,10 +2485,20 @@
     });
 
     // Filter toggle and controls
-    btnToggleFilters.addEventListener('click', () => {
-      const isClosed = filterPanel.classList.toggle('closed');
-      btnToggleFilters.classList.toggle('active', !isClosed);
-    });
+    if (btnToggleFilters) {
+      btnToggleFilters.addEventListener('click', () => {
+        populateSiteFilter();
+        const isClosed = filterPanel.classList.toggle('closed');
+        btnToggleFilters.classList.toggle('active', !isClosed);
+      });
+    }
+
+    if (btnCloseFilterPanel) {
+      btnCloseFilterPanel.addEventListener('click', () => {
+        filterPanel.classList.add('closed');
+        if (btnToggleFilters) btnToggleFilters.classList.remove('active');
+      });
+    }
 
     filterSite.addEventListener('change', onSiteChanged);
     filterVillage.addEventListener('change', onVillageChanged);
@@ -2001,17 +2538,29 @@
 
     // Drawer handle & Close button
     drawerToggle.addEventListener('click', () => {
-      plotDrawer.classList.toggle('closed');
+      const isClosed = plotDrawer.classList.toggle('closed');
+      if (isClosed) {
+        selectedPlot = null;
+        if (selectedLayer) selectedLayer = null;
+        refreshAllPlotStyles();
+      } else if (selectedPlot) {
+        refreshAllPlotStyles();
+      }
     });
     if (btnClosePlotDrawer) {
       btnClosePlotDrawer.addEventListener('click', (e) => {
         e.stopPropagation();
         plotDrawer.classList.add('closed');
+        selectedPlot = null;
+        if (selectedLayer) selectedLayer = null;
+        refreshAllPlotStyles();
       });
     }
 
     // Subplot Drawing & Separation Controls
-    btnStartDrawing.addEventListener('click', () => startSubplotDrawing(selectedPlot));
+    if (btnStartDrawing) {
+      btnStartDrawing.addEventListener('click', () => startSubplotDrawing(selectedPlot));
+    }
     btnModeDrawLine.addEventListener('click', () => setDrawingMode('line'));
     btnModeAddLabel.addEventListener('click', () => setDrawingMode('label'));
     btnUndoPoint.addEventListener('click', undoLastAction);
@@ -2025,11 +2574,11 @@
     subplotForm.addEventListener('submit', onSubplotFormSubmit);
     btnCloseModal.addEventListener('click', () => {
       subplotModal.style.display = 'none';
-      editingSubplotInstance = null;
+      resetSubplotModalForm();
     });
     btnCancelModal.addEventListener('click', () => {
       subplotModal.style.display = 'none';
-      editingSubplotInstance = null;
+      resetSubplotModalForm();
     });
 
     // Subplot Harvest Modal Form
@@ -2037,15 +2586,22 @@
     if (btnCloseHarvestModal) {
       btnCloseHarvestModal.addEventListener('click', () => {
         subplotHarvestModal.style.display = 'none';
-        editingHarvestSubplot = null;
+        resetSubplotHarvestModalForm();
       });
     }
     if (btnCancelHarvestModal) {
       btnCancelHarvestModal.addEventListener('click', () => {
         subplotHarvestModal.style.display = 'none';
-        editingHarvestSubplot = null;
+        resetSubplotHarvestModalForm();
       });
     }
+
+    // Prevent accidental number changes on mouse wheel scroll
+    document.addEventListener('wheel', () => {
+      if (document.activeElement && document.activeElement.type === 'number') {
+        document.activeElement.blur();
+      }
+    }, { passive: true });
 
     // Two-way triggers for subplot harvest form
     ['sh-actual-kg', 'sh-sale-kg', 'sh-consume-kg', 'sh-seed-kg'].forEach((id) => {
@@ -2105,8 +2661,8 @@
     });
 
     subplotVariety.addEventListener('change', () => {
-      customVarietyGroup.style.display = subplotVariety.value === 'Other' ? 'flex' : 'none';
-      if (subplotVariety.value === 'Other') {
+      updateSubplotFormConditionalFields();
+      if (subplotVariety.value === 'Local Variety' && subplotCustomVariety) {
         subplotCustomVariety.focus();
       }
     });
@@ -2118,6 +2674,10 @@
     const btnExportAll = document.getElementById('btn-export-all');
     if (btnExportAll) {
       btnExportAll.addEventListener('click', () => {
+        if (!currentUser) {
+          showToast('Staff sign in required to export internal data');
+          return;
+        }
         if (selectedPlot) {
           plotDrawer.classList.remove('closed');
           switchDrawerTab('tab-confirm');
@@ -2131,13 +2691,111 @@
     const seasonSelector = document.getElementById('season-selector');
     if (seasonSelector) {
       seasonSelector.addEventListener('change', (e) => {
-        currentSeason = e.target.value;
-        const badge = document.getElementById('legend-season-badge');
-        if (badge) badge.textContent = currentSeason;
-        showToast(`Switched active inspection season to ${currentSeason}`);
-        refreshAllPlotStyles();
+        switchSeason(e.target.value);
       });
     }
+
+    // --- Inspector Collapsible Sidebar Events ---
+    const inspectorSidebar = document.getElementById('inspector-sidebar');
+    const btnCollapseInspectorSidebar = document.getElementById('btn-collapse-inspector-sidebar');
+    const btnFloatingInspectorMenu = document.getElementById('btn-floating-inspector-menu');
+    const sidebarSeasonSelect = document.getElementById('sidebar-season-select');
+    const btnSidebarMyLocation = document.getElementById('btn-sidebar-my-location');
+    const btnSidebarExport = document.getElementById('btn-sidebar-export');
+    const btnSidebarFilter = document.getElementById('btn-sidebar-filter');
+    const btnSidebarGis = document.getElementById('btn-sidebar-gis');
+    const btnSidebarSignout = document.getElementById('btn-sidebar-signout');
+    const btnSidebarViewForm = document.getElementById('btn-sidebar-view-form');
+    const btnSidebarSketchSubplot = document.getElementById('btn-sidebar-sketch-subplot');
+
+    if (btnCollapseInspectorSidebar) {
+      btnCollapseInspectorSidebar.addEventListener('click', () => {
+        if (inspectorSidebar) inspectorSidebar.classList.add('collapsed');
+        if (btnFloatingInspectorMenu) btnFloatingInspectorMenu.style.display = 'flex';
+        setTimeout(() => map && map.invalidateSize(), 350);
+      });
+    }
+
+    if (btnFloatingInspectorMenu) {
+      btnFloatingInspectorMenu.addEventListener('click', () => {
+        if (inspectorSidebar) inspectorSidebar.classList.remove('collapsed');
+        btnFloatingInspectorMenu.style.display = 'none';
+        setTimeout(() => map && map.invalidateSize(), 350);
+      });
+    }
+
+    if (sidebarSeasonSelect) {
+      sidebarSeasonSelect.addEventListener('change', (e) => {
+        switchSeason(e.target.value);
+      });
+    }
+
+    if (btnSidebarMyLocation) {
+      btnSidebarMyLocation.addEventListener('click', centerOnUserLocation);
+    }
+
+    if (btnSidebarExport) {
+      btnSidebarExport.addEventListener('click', () => {
+        exportICSCsv();
+      });
+    }
+
+    if (btnSidebarFilter) {
+      btnSidebarFilter.addEventListener('click', () => {
+        populateSiteFilter();
+        const isClosed = filterPanel.classList.toggle('closed');
+        if (btnToggleFilters) btnToggleFilters.classList.toggle('active', !isClosed);
+      });
+    }
+
+    if (btnSidebarGis) {
+      btnSidebarGis.addEventListener('click', openGisModal);
+    }
+
+    if (btnSidebarSignout) {
+      btnSidebarSignout.addEventListener('click', () => {
+        setAuthUser(null);
+        showToast('Signed out of field inspector session');
+      });
+    }
+
+    if (btnSidebarViewForm) {
+      btnSidebarViewForm.addEventListener('click', () => {
+        if (selectedPlot) {
+          plotDrawer.classList.remove('closed');
+          switchDrawerTab('tab-farmer');
+        } else {
+          showToast('Select a plot on the map to open inspection form');
+        }
+      });
+    }
+
+    if (btnSidebarSketchSubplot) {
+      btnSidebarSketchSubplot.addEventListener('click', () => {
+        if (selectedPlot) {
+          startSubplotDrawing(selectedPlot);
+        } else {
+          showToast('Select a plot first to sketch subplots');
+        }
+      });
+    }
+
+    // Initialize sidebar search
+    setupSidebarSearch();
+  }
+
+  function switchSeason(newSeason) {
+    currentSeason = newSeason;
+    const seasonSelector = document.getElementById('season-selector');
+    if (seasonSelector) seasonSelector.value = currentSeason;
+    const sidebarSeasonSelect = document.getElementById('sidebar-season-select');
+    if (sidebarSeasonSelect) sidebarSeasonSelect.value = currentSeason;
+    const badge = document.getElementById('legend-season-badge');
+    if (badge) badge.textContent = currentSeason;
+    const sidebarSeasonInd = document.getElementById('sidebar-kpi-season');
+    if (sidebarSeasonInd) sidebarSeasonInd.textContent = currentSeason;
+    showToast(`Switched active inspection season to ${currentSeason}`);
+    refreshAllPlotStyles();
   }
 
   // --- Quick Search Autocomplete (5 Dimensions: Site, Village, Family ID, Farmer, Plot Code) ---
@@ -2388,15 +3046,216 @@
     return `${before}<mark>${match}</mark>${after}`;
   }
 
+  // --- Inspector Sidebar Dedicated Search Engine ---
+  function setupSidebarSearch() {
+    const sidebarSearchInput = document.getElementById('sidebar-search-input');
+    const btnClearSidebarSearch = document.getElementById('btn-clear-sidebar-search');
+    const sidebarSearchSuggestions = document.getElementById('sidebar-search-suggestions');
+
+    if (!sidebarSearchInput || !sidebarSearchSuggestions) return;
+
+    function handleSidebarSearch() {
+      const rawQuery = sidebarSearchInput.value.trim();
+      if (!rawQuery) {
+        if (btnClearSidebarSearch) btnClearSidebarSearch.style.display = 'none';
+        sidebarSearchSuggestions.style.display = 'none';
+        return;
+      }
+
+      if (btnClearSidebarSearch) btnClearSidebarSearch.style.display = 'block';
+      const q = rawQuery.toLowerCase();
+      const cleanQ = q.replace(/^(plot|family|parcel)\s+/i, '').trim();
+
+      const siteMatches = [];
+      const villageMatches = [];
+      const plotMatches = [];
+
+      // 1. Sites
+      Object.keys(hierarchy).forEach((site) => {
+        if (site.toLowerCase().includes(q)) {
+          let count = 0;
+          for (const vil in hierarchy[site]) {
+            for (const fam in hierarchy[site][vil]) count += hierarchy[site][vil][fam].length;
+          }
+          siteMatches.push({ site, count });
+        }
+      });
+
+      // 2. Villages
+      for (const site in hierarchy) {
+        for (const vil in hierarchy[site]) {
+          if (vil.toLowerCase().includes(q)) {
+            let count = 0;
+            for (const fam in hierarchy[site][vil]) count += hierarchy[site][vil][fam].length;
+            villageMatches.push({ site, village: vil, count });
+            if (villageMatches.length >= 3) break;
+          }
+        }
+        if (villageMatches.length >= 3) break;
+      }
+
+      // 3. Plots
+      for (let i = 0; i < searchIndex.length && plotMatches.length < 25; i++) {
+        const p = searchIndex[i];
+        const famLower = (p.family_id || '').toLowerCase();
+        const plotLower = (p.plot_id || '').toLowerCase();
+        const vilLower = (p.village || '').toLowerCase();
+        const siteLower = (p.site || '').toLowerCase();
+        const farmerRec = getFarmerRecord(p);
+        const farmerName = (farmerRec && (farmerRec.hoh_name || farmerRec.interviewee_name)) || p.farmer_name || '';
+        const farmerLower = farmerName.toLowerCase();
+
+        let score = 0;
+        if (famLower === q || plotLower === q || `${famLower}-${plotLower}` === q) score = 100;
+        else if (farmerLower && farmerLower.includes(q)) score = 85;
+        else if (famLower.includes(q)) score = 75;
+        else if (plotLower === cleanQ || plotLower.includes(cleanQ)) score = 70;
+        else if (vilLower.includes(q)) score = 45;
+        else if (siteLower.includes(q)) score = 20;
+
+        if (score > 0) plotMatches.push({ plot: p, farmerName, score });
+      }
+
+      plotMatches.sort((a, b) => b.score - a.score);
+
+      sidebarSearchSuggestions.innerHTML = '';
+      const total = siteMatches.length + villageMatches.length + plotMatches.length;
+      if (total === 0) {
+        sidebarSearchSuggestions.innerHTML = `<div style="padding: 10px; font-size: 0.72rem; color: #94a3b8; text-align: center;">No matching plots or villages for "${escapeHtml(rawQuery)}"</div>`;
+        sidebarSearchSuggestions.style.display = 'block';
+        return;
+      }
+
+      const frag = document.createDocumentFragment();
+
+      siteMatches.forEach((sm) => {
+        const item = document.createElement('div');
+        item.className = 'suggestion-item';
+        item.innerHTML = `
+          <div class="suggestion-main">
+            <span class="suggestion-title">📍 Landscape: ${highlightMatch(sm.site, rawQuery)}</span>
+            <span class="suggestion-subtitle">${sm.count} plots</span>
+          </div>
+          <span class="suggestion-tag tag-site">Site</span>
+        `;
+        item.addEventListener('click', () => {
+          sidebarSearchSuggestions.style.display = 'none';
+          sidebarSearchInput.value = sm.site;
+          filterSite.value = sm.site;
+          onSiteChanged();
+          applyFilters();
+        });
+        frag.appendChild(item);
+      });
+
+      villageMatches.forEach((vm) => {
+        const item = document.createElement('div');
+        item.className = 'suggestion-item';
+        item.innerHTML = `
+          <div class="suggestion-main">
+            <span class="suggestion-title">🏘️ Village: ${highlightMatch(vm.village, rawQuery)}</span>
+            <span class="suggestion-subtitle">${escapeHtml(vm.site)} · ${vm.count} plots</span>
+          </div>
+          <span class="suggestion-tag tag-village">Village</span>
+        `;
+        item.addEventListener('click', () => {
+          sidebarSearchSuggestions.style.display = 'none';
+          sidebarSearchInput.value = `${vm.village}, ${vm.site}`;
+          filterSite.value = vm.site;
+          onSiteChanged();
+          filterVillage.value = vm.village;
+          onVillageChanged();
+          applyFilters();
+        });
+        frag.appendChild(item);
+      });
+
+      plotMatches.slice(0, 16).forEach((m) => {
+        const p = m.plot;
+        const item = document.createElement('div');
+        item.className = 'suggestion-item';
+        const farmerLabel = m.farmerName ? ` · 🧑‍🌾 ${highlightMatch(m.farmerName, rawQuery)}` : '';
+        item.innerHTML = `
+          <div class="suggestion-main">
+            <span class="suggestion-title">Family <b>${highlightMatch(p.family_id, rawQuery)}</b> · Plot ${highlightMatch(p.plot_id, rawQuery)}${farmerLabel}</span>
+            <span class="suggestion-subtitle">${escapeHtml(p.village)}, ${escapeHtml(p.site)} · ${p.area_ha ? Number(p.area_ha).toFixed(2) : '0'} ha</span>
+          </div>
+          <span class="suggestion-tag tag-plot">Plot</span>
+        `;
+        item.addEventListener('click', () => {
+          sidebarSearchSuggestions.style.display = 'none';
+          sidebarSearchInput.value = `${p.family_id} · Plot ${p.plot_id}`;
+          selectPlot(p, true);
+        });
+        frag.appendChild(item);
+      });
+
+      sidebarSearchSuggestions.appendChild(frag);
+      sidebarSearchSuggestions.style.display = 'block';
+    }
+
+    sidebarSearchInput.addEventListener('input', handleSidebarSearch);
+    sidebarSearchInput.addEventListener('focus', () => {
+      if (sidebarSearchInput.value.trim().length > 0) {
+        sidebarSearchSuggestions.style.display = 'block';
+      }
+    });
+
+    sidebarSearchInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        const firstItem = sidebarSearchSuggestions.querySelector('.suggestion-item');
+        if (firstItem) {
+          e.preventDefault();
+          firstItem.click();
+        }
+      } else if (e.key === 'Escape') {
+        sidebarSearchSuggestions.style.display = 'none';
+      }
+    });
+
+    if (btnClearSidebarSearch) {
+      btnClearSidebarSearch.addEventListener('click', () => {
+        sidebarSearchInput.value = '';
+        btnClearSidebarSearch.style.display = 'none';
+        sidebarSearchSuggestions.style.display = 'none';
+        sidebarSearchInput.focus();
+      });
+    }
+
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.sidebar-search-box')) {
+        if (sidebarSearchSuggestions) sidebarSearchSuggestions.style.display = 'none';
+      }
+    });
+  }
+
   // --- Cascading Filters Logic ---
   function populateSiteFilter() {
-    filterSite.innerHTML = '<option value="">All Sites (6,427 plots)</option>';
-    const sites = Object.keys(hierarchy).sort();
+    if (!filterSite) return;
+    const isInspector = currentUser && (currentUser.role === 'inspector' || currentUser.role === 'supervisor');
+    const assignedLands = (currentUser && currentUser.assigned_landscapes && currentUser.assigned_landscapes.length > 0)
+      ? currentUser.assigned_landscapes
+      : [];
+
+    const totalPlots = searchIndex ? searchIndex.length : 6427;
+    filterSite.innerHTML = `<option value="">All Sites (${totalPlots.toLocaleString()} plots)</option>`;
+    
+    let sites = Object.keys(hierarchy).sort().filter(s => {
+      if (!s) return false;
+      const lower = s.toLowerCase();
+      return lower !== 'chhaeb' && lower !== 'unknown site' && lower !== 'unknown';
+    });
+    if (isInspector && assignedLands.length > 0) {
+      sites = sites.filter(s => assignedLands.includes(s));
+    }
+
     sites.forEach((site) => {
       let plotCount = 0;
-      for (const vil in hierarchy[site]) {
-        for (const fam in hierarchy[site][vil]) {
-          plotCount += hierarchy[site][vil][fam].length;
+      if (hierarchy[site]) {
+        for (const vil in hierarchy[site]) {
+          for (const fam in hierarchy[site][vil]) {
+            plotCount += hierarchy[site][vil][fam].length;
+          }
         }
       }
       const opt = document.createElement('option');
@@ -2404,6 +3263,143 @@
       opt.textContent = `${site} (${plotCount} plots)`;
       filterSite.appendChild(opt);
     });
+
+    if (isInspector && sites.length === 1) {
+      filterSite.value = sites[0];
+      onSiteChanged();
+    }
+  }
+
+  // --- Dynamic Quick Explore Sanctuaries Generator ---
+  function renderQuickExploreSanctuaries() {
+    const container = document.getElementById('landscape-chips-grid');
+    const heroStatSanctuaries = document.getElementById('hero-stat-sanctuaries');
+    if (!container) return;
+
+    // Extract unique Site values from the loaded plot data
+    const rawSitesSet = new Set();
+
+    if (masterSearchIndex && masterSearchIndex.length > 0) {
+      masterSearchIndex.forEach(p => {
+        if (p && p.site) rawSitesSet.add(String(p.site).trim());
+      });
+    }
+    if (hierarchy) {
+      Object.keys(hierarchy).forEach(s => {
+        if (s) rawSitesSet.add(String(s).trim());
+      });
+    }
+    if (masterFeatures && masterFeatures.length > 0) {
+      masterFeatures.forEach(f => {
+        const s = f.properties && (f.properties.site || f.properties.landscape);
+        if (s) rawSitesSet.add(String(s).trim());
+      });
+    }
+
+    // Exclude "Chhaeb", "Unknown Site", etc.
+    const excluded = ['chhaeb', 'unknown site', 'unknown', 'n/a', 'none'];
+    const validRawSites = Array.from(rawSitesSet).filter(s => {
+      if (!s) return false;
+      return !excluded.includes(s.toLowerCase());
+    });
+
+    const canonicalOrder = ['Preah Vihear', 'Preay Lang', 'Siem Pang', 'Veun Sai', 'Lumphat', 'Keo Seima'];
+    const presentSitesMap = new Map(); // canonicalName -> rawSiteName
+
+    validRawSites.forEach(raw => {
+      const cfg = getSiteConfig(raw);
+      if (!presentSitesMap.has(cfg.canonicalName)) {
+        presentSitesMap.set(cfg.canonicalName, raw);
+      }
+    });
+
+    const displaySites = [];
+    canonicalOrder.forEach(cName => {
+      if (presentSitesMap.has(cName)) {
+        displaySites.push(presentSitesMap.get(cName));
+      } else {
+        const cfgFallback = getSiteConfig(cName);
+        if (cfgFallback && cfgFallback.name) {
+          displaySites.push(cName);
+        }
+      }
+    });
+
+    const finalSites = [];
+    displaySites.forEach(s => {
+      const cfg = getSiteConfig(s);
+      if (!finalSites.some(fs => getSiteConfig(fs).canonicalName === cfg.canonicalName)) {
+        finalSites.push(s);
+      }
+    });
+
+    if (heroStatSanctuaries) {
+      heroStatSanctuaries.textContent = finalSites.length.toString();
+    }
+
+    container.innerHTML = '';
+    const frag = document.createDocumentFragment();
+
+    finalSites.forEach(siteName => {
+      const cfg = getSiteConfig(siteName);
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'landscape-chip site-color-chip';
+      btn.setAttribute('data-landscape', cfg.canonicalName);
+      btn.setAttribute('data-site', siteName);
+      btn.title = `Fly to ${cfg.description || cfg.canonicalName}`;
+
+      btn.style.setProperty('--site-color', cfg.color);
+      btn.style.setProperty('--site-border', cfg.borderColor);
+      btn.style.setProperty('--site-glow', cfg.bgGlow);
+      btn.style.setProperty('--site-active-bg', cfg.activeBg);
+
+      btn.innerHTML = `<span class="chip-icon">${cfg.icon}</span> ${escapeHtml(cfg.canonicalName)}`;
+
+      btn.addEventListener('click', () => {
+        container.querySelectorAll('.landscape-chip').forEach(c => c.classList.remove('active'));
+        btn.classList.add('active');
+        flyToSanctuarySite(siteName, cfg);
+      });
+
+      frag.appendChild(btn);
+    });
+
+    container.appendChild(frag);
+  }
+
+  function flyToSanctuarySite(siteName, cfg) {
+    const siteKey = (siteName || '').toLowerCase();
+    const altKeys = (cfg && cfg.altNames) || [siteKey];
+    const canonicalLower = (cfg && cfg.canonicalName || '').toLowerCase();
+
+    // Find all plot features matching this site
+    const matchingFeatures = masterFeatures.filter(f => {
+      if (!f || !f.properties) return false;
+      const s = (f.properties.site || f.properties.landscape || '').trim().toLowerCase();
+      return s === siteKey || altKeys.includes(s) || s === canonicalLower;
+    });
+
+    if (matchingFeatures.length > 0 && map) {
+      try {
+        const boundsGroup = L.geoJSON({ type: 'FeatureCollection', features: matchingFeatures });
+        const b = boundsGroup.getBounds();
+        if (b && b.isValid()) {
+          map.flyToBounds(b, { padding: [40, 40], maxZoom: 14, duration: 1.4 });
+          showToast(`📍 Exploring ${cfg ? cfg.description || cfg.canonicalName : siteName} (${matchingFeatures.length.toLocaleString()} plots)`);
+          return;
+        }
+      } catch (e) {
+        console.warn('Error computing site bounds:', e);
+      }
+    }
+
+    if (filterSite) {
+      filterSite.value = siteName;
+      onSiteChanged();
+      applyFilters();
+    }
+    showToast(`Zoomed to ${cfg ? cfg.canonicalName : siteName}`);
   }
 
   function onSiteChanged() {
@@ -2778,9 +3774,35 @@
   }
 
   function getFarmerRecord(p) {
-    if (!p) return {};
+    if (!p) return null;
     const key = getFarmerKey(p);
-    return farmersStore[key] || (p.family_id ? farmersStore[p.family_id] : {}) || {};
+    return (key && farmersStore[key] && farmersStore[key].saved) ? farmersStore[key] : null;
+  }
+
+  function hasFarmerFormData() {
+    const name = document.getElementById('f-head-name')?.value.trim();
+    const interviewee = document.getElementById('f-interviewee-name')?.value.trim();
+    const remark = document.getElementById('f-nc-remark')?.value.trim();
+    const members = document.getElementById('f-members')?.value.trim();
+    const trainings = getChipValues('#f-trainings');
+    return !!(name || interviewee || remark || members || (trainings && trainings.length > 0));
+  }
+
+  function hasPlotBaselineFormData() {
+    const date = document.getElementById('p-inspection-date')?.value.trim();
+    const avoidMethod = document.getElementById('p-avoid-method')?.value.trim();
+    const cropName = document.getElementById('p-crop-name')?.value.trim();
+    const expLastYear = document.getElementById('p-exp-last-year')?.value.trim();
+    const prohibitedChips = getChipValues('#p-prohibited-chips');
+    return !!(date || avoidMethod || cropName || expLastYear || (prohibitedChips && prohibitedChips.length > 0));
+  }
+
+  function hasPostHarvestFormData() {
+    const chamkarNum = document.getElementById('c-chamkar-num')?.value.trim();
+    const chamkarArea = document.getElementById('c-chamkar-area')?.value.trim();
+    const crops = getChipValues('#c-chamkar-crops');
+    const chambers = document.getElementById('c-chambers')?.value.trim();
+    return !!(chamkarNum || chamkarArea || (crops && crops.length > 0) || chambers);
   }
 
   function loadICSStores() {
@@ -2827,7 +3849,9 @@
     const btnNextParcel = document.getElementById('btn-next-to-parcel');
     if (btnNextParcel) {
       btnNextParcel.addEventListener('click', () => {
-        saveCurrentFarmerForm();
+        if (hasFarmerFormData()) {
+          saveCurrentFarmerForm();
+        }
         switchDrawerTab('tab-parcel');
       });
     }
@@ -2840,7 +3864,9 @@
     const btnNextSubplots = document.getElementById('btn-next-to-subplots');
     if (btnNextSubplots) {
       btnNextSubplots.addEventListener('click', () => {
-        saveCurrentPlotBaselineForm();
+        if (hasPlotBaselineFormData()) {
+          saveCurrentPlotBaselineForm();
+        }
         switchDrawerTab('tab-subplots');
       });
     }
@@ -2852,7 +3878,14 @@
 
     const btnNextPostharvest = document.getElementById('btn-next-to-postharvest');
     if (btnNextPostharvest) {
-      btnNextPostharvest.addEventListener('click', () => switchDrawerTab('tab-postharvest'));
+      btnNextPostharvest.addEventListener('click', () => {
+        if (currentInspectionPhase === 'phase_1') {
+          // Phase 1: skip Stage 4 Post-Harvest and proceed straight to Phase 1 confirmation!
+          switchDrawerTab('tab-confirm');
+        } else {
+          switchDrawerTab('tab-postharvest');
+        }
+      });
     }
 
     const btnBackSubplots = document.getElementById('btn-back-to-subplots');
@@ -2863,19 +3896,105 @@
     const btnNextConfirm = document.getElementById('btn-next-to-confirm');
     if (btnNextConfirm) {
       btnNextConfirm.addEventListener('click', () => {
-        saveCurrentPostHarvestForm();
+        if (hasPostHarvestFormData()) {
+          saveCurrentPostHarvestForm();
+        }
         switchDrawerTab('tab-confirm');
       });
     }
 
     const btnBackPostharvest = document.getElementById('btn-back-to-postharvest');
     if (btnBackPostharvest) {
-      btnBackPostharvest.addEventListener('click', () => switchDrawerTab('tab-postharvest'));
+      btnBackPostharvest.addEventListener('click', () => {
+        if (currentInspectionPhase === 'phase_1') {
+          switchDrawerTab('tab-subplots');
+        } else {
+          switchDrawerTab('tab-postharvest');
+        }
+      });
     }
 
     const btnSaveAll = document.getElementById('btn-save-complete-inspection');
     if (btnSaveAll) {
       btnSaveAll.addEventListener('click', saveCompleteRecord);
+    }
+
+    // Phase Switcher Buttons
+    const btnP1 = document.getElementById('phase-btn-1');
+    const btnP2 = document.getElementById('phase-btn-2');
+    const btnP3 = document.getElementById('phase-btn-3');
+    if (btnP1) btnP1.addEventListener('click', () => switchInspectionPhase('phase_1'));
+    if (btnP2) btnP2.addEventListener('click', () => switchInspectionPhase('phase_2'));
+    if (btnP3) btnP3.addEventListener('click', () => switchInspectionPhase('phase_3'));
+  }
+
+  // --- Multi-Phase Seasonal Lifecycle Logic ---
+  let currentInspectionPhase = 'phase_1';
+
+  function switchInspectionPhase(phaseKey) {
+    currentInspectionPhase = phaseKey;
+    const btn1 = document.getElementById('phase-btn-1');
+    const btn2 = document.getElementById('phase-btn-2');
+    const btn3 = document.getElementById('phase-btn-3');
+    const badge = document.getElementById('phase-active-badge');
+    const btnNextPost = document.getElementById('btn-next-to-postharvest');
+    const saveAllBtn = document.getElementById('btn-save-complete-inspection');
+    const postTabBtn = document.getElementById('tab-btn-postharvest');
+
+    if (btn1) btn1.classList.toggle('active', phaseKey === 'phase_1');
+    if (btn2) btn2.classList.toggle('active', phaseKey === 'phase_2');
+    if (btn3) btn3.classList.toggle('active', phaseKey === 'phase_3');
+
+    if (phaseKey === 'phase_1') {
+      if (badge) badge.textContent = 'Phase 1: Planting & Growing';
+      if (btnNextPost) btnNextPost.textContent = 'Proceed to Phase 1 Sign-Off →';
+      if (saveAllBtn) saveAllBtn.innerHTML = '<span>💾 Sign Off Phase 1 Baseline</span>';
+      if (postTabBtn) postTabBtn.style.opacity = '0.5';
+    } else if (phaseKey === 'phase_2') {
+      if (badge) badge.textContent = 'Phase 2: Harvest & Threshing';
+      if (btnNextPost) btnNextPost.textContent = 'Next: Post-Harvest →';
+      if (saveAllBtn) saveAllBtn.innerHTML = '<span>💾 Save Phase 2 Harvest Record</span>';
+      if (postTabBtn) postTabBtn.style.opacity = '1';
+    } else if (phaseKey === 'phase_3') {
+      if (badge) badge.textContent = 'Phase 3: Post-Harvest & Conservation Audit';
+      if (btnNextPost) btnNextPost.textContent = 'Next: Post-Harvest →';
+      if (saveAllBtn) saveAllBtn.innerHTML = '<span>💾 Sign Off Final Annual Audit</span>';
+      if (postTabBtn) postTabBtn.style.opacity = '1';
+    }
+  }
+
+  function updatePhaseIndicatorsForSelectedPlot() {
+    if (!selectedPlot) return;
+    const farmerKey = getFarmerKey(selectedPlot);
+    const farmerRecord = farmersStore[farmerKey] || {};
+    const phases = farmerRecord.phases || {};
+
+    const btn1 = document.getElementById('phase-btn-1');
+    const btn2 = document.getElementById('phase-btn-2');
+    const btn3 = document.getElementById('phase-btn-3');
+    const ind1 = document.getElementById('phase-1-indicator');
+    const ind2 = document.getElementById('phase-2-indicator');
+    const ind3 = document.getElementById('phase-3-indicator');
+
+    const p1Done = !!phases.phase_1;
+    const p2Done = !!phases.phase_2;
+    const p3Done = !!phases.phase_3;
+
+    if (btn1) btn1.classList.toggle('phase-completed', p1Done);
+    if (btn2) btn2.classList.toggle('phase-completed', p2Done);
+    if (btn3) btn3.classList.toggle('phase-completed', p3Done);
+
+    if (ind1) ind1.textContent = p1Done ? '●' : '○';
+    if (ind2) ind2.textContent = p2Done ? '●' : '○';
+    if (ind3) ind3.textContent = p3Done ? '●' : '○';
+
+    // Auto-advance to active phase
+    if (!p1Done) {
+      switchInspectionPhase('phase_1');
+    } else if (!p2Done) {
+      switchInspectionPhase('phase_2');
+    } else {
+      switchInspectionPhase('phase_3');
     }
   }
 
@@ -2982,24 +4101,34 @@
 
   // --- Progressive Disclosure & Conditional Fields ---
   function initProgressiveDisclosure() {
-    // Stage 1: Farmer compliance
+    // Stage 1: Farmer compliance (Options: Compliance, Non-Compliance, Resign)
     const selCompliant = document.getElementById('f-compliant');
     const blockNC = document.getElementById('nc-details-block');
     const badgeCompliance = document.getElementById('badge-farmer-compliance');
     if (selCompliant) {
       selCompliant.addEventListener('change', () => {
         const val = selCompliant.value;
-        if (blockNC) blockNC.style.display = val === '2' ? 'block' : 'none';
+        const isNC = val === 'Non-Compliance' || val === 'Resign' || val === '2' || val === '3';
+        if (blockNC) blockNC.style.display = isNC ? 'block' : 'none';
         if (badgeCompliance) {
-          if (val === '1') {
-            badgeCompliance.textContent = 'Compliant';
+          if (!val) {
+            badgeCompliance.style.display = 'none';
+            badgeCompliance.textContent = '';
+          } else if (val === 'Compliance' || val === '1') {
+            badgeCompliance.style.display = 'inline-block';
+            badgeCompliance.textContent = 'Compliance';
             badgeCompliance.className = 'badge status-pill status-approved';
-          } else if (val === '2') {
-            badgeCompliance.textContent = 'Infringement';
+          } else if (val === 'Non-Compliance' || val === '2') {
+            badgeCompliance.style.display = 'inline-block';
+            badgeCompliance.textContent = 'Non-Compliance';
             badgeCompliance.className = 'badge status-pill status-danger';
-          } else {
-            badgeCompliance.textContent = 'Resigned';
+          } else if (val === 'Resign' || val === '3') {
+            badgeCompliance.style.display = 'inline-block';
+            badgeCompliance.textContent = 'Resign';
             badgeCompliance.className = 'badge status-pill status-warn';
+          } else {
+            badgeCompliance.style.display = 'none';
+            badgeCompliance.textContent = '';
           }
         }
       });
@@ -3214,6 +4343,135 @@
     summaryBox.style.display = 'block';
   }
 
+  function setVal(id, val) {
+    const el = document.getElementById(id);
+    if (el) el.value = val !== undefined && val !== null ? val : '';
+  }
+
+  function setChipValues(containerSelector, arrValues) {
+    const container = document.querySelector(containerSelector);
+    if (!container || !Array.isArray(arrValues)) return;
+    container.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
+      cb.checked = arrValues.includes(cb.value);
+    });
+  }
+
+  function getChipValues(containerSelector) {
+    const container = document.querySelector(containerSelector);
+    if (!container) return [];
+    return Array.from(container.querySelectorAll('input[type="checkbox"]:checked')).map((cb) => cb.value);
+  }
+
+  // --- Reset All Inspection Forms for Clean Plot/Subplot Switching ---
+  function resetAllInspectionForms() {
+    // Stage 1: Farmer Baseline
+    setVal('f-compliant', '');
+    setChipValues('#f-nc-types', []);
+    setVal('f-nc-remark', '');
+    setVal('f-nc-date', '');
+    setVal('f-nc-status', '');
+    setVal('f-head-name', '');
+    setVal('f-gender', '');
+    setVal('f-is-head-interviewee', '');
+    setVal('f-ethnicity', '');
+    setVal('f-interviewee-name', '');
+    setVal('f-interviewee-gender', '');
+    setVal('f-status', '');
+    setVal('f-labor-mf', '');
+    setVal('f-members', '');
+    setVal('f-females', '');
+    setVal('f-school', '');
+    setVal('f-toilet', '');
+    setVal('f-disable', '');
+    setVal('f-cattle', '');
+    setVal('f-buffalo', '');
+    setVal('f-other-animals', '');
+    setChipValues('#f-trainings', []);
+    setChipValues('#f-records', []);
+
+    // Stage 2: Parcel Baseline
+    setVal('p-inspection-date', '');
+    setVal('p-area-ha', '');
+    setVal('p-land-status', '');
+    setVal('p-land-situation', '');
+    setVal('p-irrigation', '');
+    setVal('p-contamination', '');
+    setVal('p-avoid-method', '');
+    setVal('p-last-prohibited', '');
+    setChipValues('#p-prohibited-chips', []);
+    setVal('p-prohibited-date', '');
+    setVal('p-other-crop', '');
+    setVal('p-crop-name', '');
+    setVal('p-crop-plant-date', '');
+    setVal('p-crop-harvest-date', '');
+    setVal('p-crop-actual-kg', '');
+    setVal('p-crop-sold-kg', '');
+    setVal('p-exp-last-year', '');
+    setVal('p-actual-last-year', '');
+    setVal('p-sold-ircc', '');
+    setVal('p-seed-kept', '');
+    setVal('p-consumed', '');
+
+    // Stage 4: Post-Harvest
+    setVal('c-have-chamkar', '');
+    setVal('c-chamkar-num', '');
+    setVal('c-chamkar-area', '');
+    setChipValues('#c-chamkar-crops', []);
+    setVal('c-rice-barn', '');
+    setVal('c-chambers', '');
+    setVal('c-barn-clean', '');
+    setVal('c-barn-chemicals', '');
+    setVal('c-clear-forest', '');
+    setVal('c-expand-land', '');
+    setVal('c-burn-straw', '');
+    setVal('c-firebreak', '');
+
+    // Stage 5: Confirmation
+    setVal('c-certified-status', '');
+    setVal('c-conclusion-notes', '');
+    setVal('c-inspector-name', sessionState.inspectorName || '');
+    setVal('c-irpg-name', '');
+    loadSignatureFromDataUrl('');
+
+    // Trigger state change updates for conditional blocks
+    const trigger = (elId) => {
+      const el = document.getElementById(elId);
+      if (el) el.dispatchEvent(new Event('change'));
+    };
+    trigger('f-compliant');
+    trigger('f-is-head-interviewee');
+    trigger('p-contamination');
+    trigger('p-last-prohibited');
+    trigger('p-other-crop');
+    trigger('c-have-chamkar');
+    trigger('c-rice-barn');
+  }
+
+  function resetSubplotHarvestModalForm() {
+    editingHarvestSubplot = null;
+    setVal('sh-complete', '1');
+    setVal('sh-reason-no', 'Not mature');
+    setVal('sh-date', '');
+    setVal('sh-method', '3');
+    setVal('sh-owner', '');
+    setVal('sh-flush', 0);
+    setVal('sh-dry-loc', '1');
+    setVal('sh-payment-type', '1');
+    setVal('sh-payment-amount', '');
+    setVal('sh-actual-kg', '');
+    setVal('sh-sale-kg', '');
+    setVal('sh-consume-kg', '');
+    setVal('sh-seed-kg', '');
+
+    const blkInc = document.getElementById('sh-incomplete-block');
+    const blkComp = document.getElementById('sh-complete-block');
+    if (blkInc) blkInc.style.display = 'none';
+    if (blkComp) blkComp.style.display = 'block';
+
+    const blkMachine = document.getElementById('sh-machine-block');
+    if (blkMachine) blkMachine.style.display = 'flex';
+  }
+
   // --- Load Inspection for Selected Plot (Strict Hierarchy) ---
   function loadICSInspectionForSelectedPlot() {
     if (!selectedPlot) return;
@@ -3222,6 +4480,9 @@
     const village = (selectedPlot.village || '').trim();
     const farmerKey = getFarmerKey(selectedPlot);
     const farmerLabel = getFarmerDisplayLabel(village, familyId);
+
+    // 0. RESET ALL FORMS FIRST - NEVER LEAK DATA ACROSS PLOTS
+    resetAllInspectionForms();
 
     // Header labels & Hierarchy Banners
     const dispFamily = document.getElementById('f-family-display');
@@ -3238,6 +4499,10 @@
     setBannerText('banner-subplots-plot', selectedPlot.plot_id);
     setBannerText('banner-postharvest-family', farmerLabel);
     setBannerText('banner-confirm-family', farmerLabel);
+
+    // Top identity badges in drawer
+    const cardVillagePill = document.getElementById('card-village-pill');
+    if (cardVillagePill) cardVillagePill.textContent = `Village: ${village || 'N/A'}`;
 
     const btnExportLabel = document.getElementById('btn-export-ics-csv-label');
     if (btnExportLabel) {
@@ -3278,77 +4543,142 @@
       }
     }
 
-    // 1. Stage 1: Farmer Baseline (Recorded once per farmer: Village + Family ID)
+    // Check saved state for plot & farmer
+    const insp = icsInspections[plotDbId];
+    const isParcelSaved = !!(insp && insp.saved);
     const farmer = getFarmerRecord(selectedPlot);
-    setVal('f-compliant', farmer.farmer_compliant || '1');
-    setChipValues('#f-nc-types', farmer.nc_types || []);
-    setVal('f-nc-remark', farmer.nc_remark || '');
-    setVal('f-nc-date', farmer.nc_date || '');
-    setVal('f-nc-status', farmer.nc_status || 'Organic');
+    const isFarmerSaved = !!(farmer && farmer.saved);
 
-    setVal('f-head-name', farmer.hoh_name || selectedPlot.farmer_name || '');
-    setVal('f-gender', farmer.hoh_sex || (selectedPlot.sex === 'F' ? '2' : '1'));
-    setVal('f-is-head-interviewee', farmer.is_head_interviewee || '1');
-    setVal('f-ethnicity', farmer.ethnicity || '1');
-    setVal('f-interviewee-name', farmer.interviewee_name || '');
-    setVal('f-interviewee-gender', farmer.interviewee_gender || '1');
-    setVal('f-status', farmer.status || '1');
-    setVal('f-labor-mf', farmer.labor_mf || '3');
-    setVal('f-members', farmer.members_count || 4);
-    setVal('f-females', farmer.females_count || 2);
-    setVal('f-school', farmer.school_count || 2);
-    setVal('f-toilet', farmer.has_toilet || '1');
-    setVal('f-disable', farmer.has_disabled || '2');
-    setVal('f-cattle', farmer.cattle_count || 0);
-    setVal('f-buffalo', farmer.buffalo_count || 0);
-    setVal('f-other-animals', farmer.other_animals_count || 0);
+    // Update Top Sticky Status Pill (Public view shows 'Inspected', Staff view shows internal inspection state)
+    const inspectionStatePill = document.getElementById('card-inspection-state-pill');
+    if (inspectionStatePill) {
+      if (!currentUser) {
+        inspectionStatePill.className = 'sub-status-pill status-saved';
+        inspectionStatePill.textContent = '🟢 Inspected';
+      } else if (isParcelSaved || isFarmerSaved) {
+        inspectionStatePill.className = 'sub-status-pill status-saved';
+        inspectionStatePill.textContent = '🟢 Saved Inspection Record';
+      } else {
+        inspectionStatePill.className = 'sub-status-pill status-blank';
+        inspectionStatePill.textContent = '⚪ Blank Form (Not Inspected)';
+      }
+    }
 
-    setChipValues('#f-trainings', farmer.trainings || ['1']);
-    setChipValues('#f-records', farmer.records || ['map', 'book']);
+    // Update Phase Milestone Indicators for this plot & farmer
+    updatePhaseIndicatorsForSelectedPlot();
+
+    // 1. Stage 1: Farmer Baseline (Recorded once per farmer: Village + Family ID)
+    if (isFarmerSaved) {
+      let compVal = farmer.farmer_compliant || 'Compliance';
+      if (compVal === '1') compVal = 'Compliance';
+      else if (compVal === '2') compVal = 'Non-Compliance';
+      else if (compVal === '3') compVal = 'Resign';
+      setVal('f-compliant', compVal);
+
+      setChipValues('#f-nc-types', farmer.nc_types || []);
+      setVal('f-nc-remark', farmer.nc_remark || '');
+      setVal('f-nc-date', farmer.nc_date || '');
+      setVal('f-nc-status', farmer.nc_status || selectedPlot.organic_status || 'Organic');
+
+      setVal('f-head-name', farmer.hoh_name || '');
+      setVal('f-gender', farmer.hoh_sex || '1');
+      setVal('f-is-head-interviewee', farmer.is_head_interviewee || '1');
+      setVal('f-ethnicity', farmer.ethnicity || '1');
+      setVal('f-interviewee-name', farmer.interviewee_name || '');
+      setVal('f-interviewee-gender', farmer.interviewee_gender || '1');
+
+      let farmerStatusVal = farmer.status || 'Existing';
+      if (['1', '2', '3', '4', '5', 'Organic', 'New_Organic', 'Ibis II', 'Ibis I', 'WF', 'Wildlife Friendly'].includes(farmerStatusVal)) {
+        farmerStatusVal = 'Existing';
+      }
+      setVal('f-status', farmerStatusVal);
+
+      setVal('f-labor-mf', farmer.labor_mf || '');
+      setVal('f-members', farmer.members_count !== undefined && farmer.members_count !== null ? farmer.members_count : '');
+      setVal('f-females', farmer.females_count !== undefined && farmer.females_count !== null ? farmer.females_count : '');
+      setVal('f-school', farmer.school_count !== undefined && farmer.school_count !== null ? farmer.school_count : '');
+      setVal('f-toilet', farmer.has_toilet || '1');
+      setVal('f-disable', farmer.has_disabled || '2');
+      setVal('f-cattle', farmer.cattle_count !== undefined && farmer.cattle_count !== null ? farmer.cattle_count : '');
+      setVal('f-buffalo', farmer.buffalo_count !== undefined && farmer.buffalo_count !== null ? farmer.buffalo_count : '');
+      setVal('f-other-animals', farmer.other_animals_count !== undefined && farmer.other_animals_count !== null ? farmer.other_animals_count : '');
+
+      let rawTrainings = farmer.trainings || [];
+      let normalizedTrainings = rawTrainings.map((t) => {
+        if (t === '1') return 'Organic Standard';
+        if (t === '2') return 'Fair for Life';
+        if (t === '3') return 'Organic Agriculture';
+        return t;
+      }).filter((t) => ['Organic Standard', 'Organic Agriculture', 'Fair for Life'].includes(t));
+      setChipValues('#f-trainings', normalizedTrainings);
+      setChipValues('#f-records', farmer.records || []);
+    } else {
+      // Unsaved plot/farmer: start with a 100% blank form!
+      setVal('f-compliant', '');
+      setVal('f-head-name', '');
+      setVal('f-gender', '');
+      setVal('f-status', '');
+    }
 
     // 2. Stage 2: Parcel Baseline (Specific to this physical parcel)
-    const insp = icsInspections[plotDbId] || {};
-    setVal('p-inspection-date', insp.inspection_date || new Date().toISOString().slice(0, 10));
-    setVal('p-area-ha', insp.area_ha || (selectedPlot.area_ha ? selectedPlot.area_ha.toFixed(2) : '1.00'));
-    setVal('p-land-situation', insp.land_situation || '1');
-    setVal('p-irrigation', insp.irrigation || '1');
-    setVal('p-contamination', insp.contamination || '2');
-    setVal('p-avoid-method', insp.avoid_method || '');
-    setVal('p-last-prohibited', insp.last_prohibited || '2');
-    setChipValues('#p-prohibited-chips', insp.prohibited_inputs || []);
-    setVal('p-prohibited-date', insp.prohibited_date || '');
-    setVal('p-other-crop', insp.other_crop || '2');
-    setVal('p-crop-name', insp.crop_name || '');
-    setVal('p-crop-status', insp.crop_status || 'Before');
-
-    setVal('p-exp-last-year', insp.exp_last_year || '');
-    setVal('p-actual-last-year', insp.actual_last_year || '');
-    setVal('p-sold-ircc', insp.sold_ircc || '');
-    setVal('p-seed-kept', insp.seed_kept || '');
-    setVal('p-consumed', insp.consumed || '');
+    if (isParcelSaved) {
+      setVal('p-inspection-date', insp.inspection_date || '');
+      setVal('p-area-ha', insp.area_ha !== undefined ? insp.area_ha : (selectedPlot.area_ha ? selectedPlot.area_ha.toFixed(2) : ''));
+      setVal('p-land-status', insp.land_status || selectedPlot.organic_status || 'Organic');
+      setVal('p-land-situation', insp.land_situation || '1');
+      setVal('p-irrigation', insp.irrigation || '1');
+      setVal('p-contamination', insp.contamination || '2');
+      setVal('p-avoid-method', insp.avoid_method || '');
+      setVal('p-last-prohibited', insp.last_prohibited || '2');
+      setChipValues('#p-prohibited-chips', insp.prohibited_inputs || []);
+      setVal('p-prohibited-date', insp.prohibited_date || '');
+      setVal('p-other-crop', insp.other_crop || '2');
+      setVal('p-crop-name', insp.crop_name || '');
+      setVal('p-crop-plant-date', insp.crop_plant_date || '');
+      setVal('p-crop-harvest-date', insp.crop_harvest_date || '');
+      setVal('p-crop-actual-kg', insp.crop_actual_kg !== undefined && insp.crop_actual_kg !== null ? insp.crop_actual_kg : '');
+      setVal('p-crop-sold-kg', insp.crop_sold_kg !== undefined && insp.crop_sold_kg !== null ? insp.crop_sold_kg : '');
+      setVal('p-exp-last-year', insp.exp_last_year !== undefined && insp.exp_last_year !== null ? insp.exp_last_year : '');
+      setVal('p-actual-last-year', insp.actual_last_year !== undefined && insp.actual_last_year !== null ? insp.actual_last_year : '');
+      setVal('p-sold-ircc', insp.sold_ircc !== undefined && insp.sold_ircc !== null ? insp.sold_ircc : '');
+      setVal('p-seed-kept', insp.seed_kept !== undefined && insp.seed_kept !== null ? insp.seed_kept : '');
+      setVal('p-consumed', insp.consumed !== undefined && insp.consumed !== null ? insp.consumed : '');
+    } else {
+      // Blank Form: only physical area and land organic status from GIS layer
+      setVal('p-inspection-date', '');
+      setVal('p-area-ha', selectedPlot.area_ha ? selectedPlot.area_ha.toFixed(2) : '');
+      setVal('p-land-status', selectedPlot.organic_status || 'Organic');
+    }
 
     // 3. Stage 4: Post-Harvest Inspection (Farmer level, off-season)
-    const postHarvest = farmer.post_harvest || {};
-    setVal('c-have-chamkar', postHarvest.have_chamkar || '2');
-    setVal('c-chamkar-num', postHarvest.chamkar_num || 1);
-    setVal('c-chamkar-area', postHarvest.chamkar_area || '');
-    setChipValues('#c-chamkar-crops', postHarvest.chamkar_crops || []);
-    setVal('c-rice-barn', postHarvest.has_rice_barn || '1');
-    setVal('c-chambers', postHarvest.barn_chambers || 1);
-    setVal('c-barn-clean', postHarvest.barn_clean || '1');
-    setVal('c-barn-chemicals', postHarvest.barn_free_chemicals || '1');
-    setVal('c-clear-forest', postHarvest.cleared_forest || '2');
-    setVal('c-expand-land', postHarvest.expanded_land || '2');
-    setVal('c-burn-straw', postHarvest.burned_straw || '2');
-    setVal('c-firebreak', postHarvest.firebreak_kept || '1');
+    if (isFarmerSaved && farmer.post_harvest && farmer.post_harvest.saved) {
+      const postHarvest = farmer.post_harvest;
+      setVal('c-have-chamkar', postHarvest.have_chamkar || '2');
+      setVal('c-chamkar-num', postHarvest.chamkar_num !== undefined ? postHarvest.chamkar_num : '');
+      setVal('c-chamkar-area', postHarvest.chamkar_area || '');
+      setChipValues('#c-chamkar-crops', postHarvest.chamkar_crops || []);
+      setVal('c-rice-barn', postHarvest.has_rice_barn || '1');
+      setVal('c-chambers', postHarvest.barn_chambers !== undefined ? postHarvest.barn_chambers : '');
+      setVal('c-barn-clean', postHarvest.barn_clean || '1');
+      setVal('c-barn-chemicals', postHarvest.barn_free_chemicals || '1');
+      setVal('c-clear-forest', postHarvest.cleared_forest || '2');
+      setVal('c-expand-land', postHarvest.expanded_land || '2');
+      setVal('c-burn-straw', postHarvest.burned_straw || '2');
+      setVal('c-firebreak', postHarvest.firebreak_kept || '1');
+    }
 
     // 4. Stage 5: Confirmation (Farmer level complete sign-off)
-    const confirmData = farmer.confirmation || {};
-    setVal('c-certified-status', confirmData.certified_status || '1');
-    setVal('c-conclusion-notes', confirmData.conclusion_notes || '');
-    setVal('c-inspector-name', confirmData.inspector_name || sessionState.inspectorName || '');
-    setVal('c-irpg-name', confirmData.irpg_name || '');
-    loadSignatureFromDataUrl(confirmData.signature_data || '');
+    if (isFarmerSaved && farmer.confirmation && farmer.confirmation.saved) {
+      const confirmData = farmer.confirmation;
+      setVal('c-certified-status', confirmData.certified_status || '1');
+      setVal('c-conclusion-notes', confirmData.conclusion_notes || '');
+      setVal('c-inspector-name', confirmData.inspector_name || sessionState.inspectorName || '');
+      setVal('c-irpg-name', confirmData.irpg_name || '');
+      loadSignatureFromDataUrl(confirmData.signature_data || '');
+    } else {
+      setVal('c-inspector-name', sessionState.inspectorName || '');
+      loadSignatureFromDataUrl('');
+    }
 
     // Refresh conditional triggers
     const trigger = (elId) => {
@@ -3366,40 +4696,22 @@
     updateParcelHarvestSummary();
   }
 
-  function setVal(id, val) {
-    const el = document.getElementById(id);
-    if (el) el.value = val !== undefined && val !== null ? val : '';
-  }
-
-  function setChipValues(containerSelector, arrValues) {
-    const container = document.querySelector(containerSelector);
-    if (!container || !Array.isArray(arrValues)) return;
-    container.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
-      cb.checked = arrValues.includes(cb.value);
-    });
-  }
-
-  function getChipValues(containerSelector) {
-    const container = document.querySelector(containerSelector);
-    if (!container) return [];
-    return Array.from(container.querySelectorAll('input[type="checkbox"]:checked')).map((cb) => cb.value);
-  }
-
   // --- Form Auto-Save Handlers (Strict Hierarchy: Village + Family ID) ---
   function saveCurrentFarmerForm() {
     if (!selectedPlot) return;
     const farmerKey = getFarmerKey(selectedPlot);
     const fid = selectedPlot.family_id;
     const village = selectedPlot.village || '';
-    const existing = farmersStore[farmerKey] || farmersStore[fid] || {};
+    const existing = farmersStore[farmerKey] || {};
     farmersStore[farmerKey] = {
       ...existing,
+      saved: true,
       farmer_key: farmerKey,
       family_id: fid,
       village: village,
       site: selectedPlot.site || '',
-      // Compliance
-      farmer_compliant: document.getElementById('f-compliant')?.value || '1',
+      // Compliance (Options: Compliance, Non-Compliance, Resign)
+      farmer_compliant: document.getElementById('f-compliant')?.value || 'Compliance',
       nc_types: getChipValues('#f-nc-types'),
       nc_remark: document.getElementById('f-nc-remark')?.value.trim() || '',
       nc_date: document.getElementById('f-nc-date')?.value || '',
@@ -3411,16 +4723,16 @@
       ethnicity: document.getElementById('f-ethnicity')?.value || '1',
       interviewee_name: document.getElementById('f-interviewee-name')?.value.trim() || '',
       interviewee_gender: document.getElementById('f-interviewee-gender')?.value || '1',
-      status: document.getElementById('f-status')?.value || '1',
-      labor_mf: document.getElementById('f-labor-mf')?.value || '3',
-      members_count: parseInt(document.getElementById('f-members')?.value, 10) || 4,
-      females_count: parseInt(document.getElementById('f-females')?.value, 10) || 2,
-      school_count: parseInt(document.getElementById('f-school')?.value, 10) || 2,
+      status: document.getElementById('f-status')?.value || 'Existing',
+      labor_mf: document.getElementById('f-labor-mf')?.value || '',
+      members_count: document.getElementById('f-members')?.value !== '' ? parseInt(document.getElementById('f-members')?.value, 10) : null,
+      females_count: document.getElementById('f-females')?.value !== '' ? parseInt(document.getElementById('f-females')?.value, 10) : null,
+      school_count: document.getElementById('f-school')?.value !== '' ? parseInt(document.getElementById('f-school')?.value, 10) : null,
       has_toilet: document.getElementById('f-toilet')?.value || '1',
       has_disabled: document.getElementById('f-disable')?.value || '2',
-      cattle_count: parseInt(document.getElementById('f-cattle')?.value, 10) || 0,
-      buffalo_count: parseInt(document.getElementById('f-buffalo')?.value, 10) || 0,
-      other_animals_count: parseInt(document.getElementById('f-other-animals')?.value, 10) || 0,
+      cattle_count: document.getElementById('f-cattle')?.value !== '' ? parseInt(document.getElementById('f-cattle')?.value, 10) : null,
+      buffalo_count: document.getElementById('f-buffalo')?.value !== '' ? parseInt(document.getElementById('f-buffalo')?.value, 10) : null,
+      other_animals_count: document.getElementById('f-other-animals')?.value !== '' ? parseInt(document.getElementById('f-other-animals')?.value, 10) : null,
       trainings: getChipValues('#f-trainings'),
       records: getChipValues('#f-records'),
       updated_at: new Date().toISOString()
@@ -3434,6 +4746,7 @@
     const existing = icsInspections[key] || {};
     icsInspections[key] = {
       ...existing,
+      saved: true,
       plot_db_id: selectedPlot.id,
       family_id: selectedPlot.family_id,
       village: selectedPlot.village || '',
@@ -3441,6 +4754,7 @@
       plot_id: selectedPlot.plot_id,
       inspection_date: document.getElementById('p-inspection-date')?.value || '',
       area_ha: parseFloat(document.getElementById('p-area-ha')?.value) || selectedPlot.area_ha || 0,
+      land_status: document.getElementById('p-land-status')?.value || 'Organic',
       land_situation: document.getElementById('p-land-situation')?.value || '1',
       irrigation: document.getElementById('p-irrigation')?.value || '1',
       contamination: document.getElementById('p-contamination')?.value || '2',
@@ -3450,12 +4764,15 @@
       prohibited_date: document.getElementById('p-prohibited-date')?.value || '',
       other_crop: document.getElementById('p-other-crop')?.value || '2',
       crop_name: document.getElementById('p-crop-name')?.value.trim() || '',
-      crop_status: document.getElementById('p-crop-status')?.value || 'Before',
-      exp_last_year: parseFloat(document.getElementById('p-exp-last-year')?.value) || 0,
-      actual_last_year: parseFloat(document.getElementById('p-actual-last-year')?.value) || 0,
-      sold_ircc: parseFloat(document.getElementById('p-sold-ircc')?.value) || 0,
-      seed_kept: parseFloat(document.getElementById('p-seed-kept')?.value) || 0,
-      consumed: parseFloat(document.getElementById('p-consumed')?.value) || 0,
+      crop_plant_date: document.getElementById('p-crop-plant-date')?.value || '',
+      crop_harvest_date: document.getElementById('p-crop-harvest-date')?.value || '',
+      crop_actual_kg: document.getElementById('p-crop-actual-kg')?.value !== '' ? parseFloat(document.getElementById('p-crop-actual-kg')?.value) || 0 : '',
+      crop_sold_kg: document.getElementById('p-crop-sold-kg')?.value !== '' ? parseFloat(document.getElementById('p-crop-sold-kg')?.value) || 0 : '',
+      exp_last_year: document.getElementById('p-exp-last-year')?.value !== '' ? parseFloat(document.getElementById('p-exp-last-year')?.value) || 0 : '',
+      actual_last_year: document.getElementById('p-actual-last-year')?.value !== '' ? parseFloat(document.getElementById('p-actual-last-year')?.value) || 0 : '',
+      sold_ircc: document.getElementById('p-sold-ircc')?.value !== '' ? parseFloat(document.getElementById('p-sold-ircc')?.value) || 0 : '',
+      seed_kept: document.getElementById('p-seed-kept')?.value !== '' ? parseFloat(document.getElementById('p-seed-kept')?.value) || 0 : '',
+      consumed: document.getElementById('p-consumed')?.value !== '' ? parseFloat(document.getElementById('p-consumed')?.value) || 0 : '',
       updated_at: new Date().toISOString()
     };
     saveICSStores();
@@ -3473,12 +4790,13 @@
       };
     }
     farmersStore[farmerKey].post_harvest = {
+      saved: true,
       have_chamkar: document.getElementById('c-have-chamkar')?.value || '2',
-      chamkar_num: parseInt(document.getElementById('c-chamkar-num')?.value, 10) || 1,
+      chamkar_num: document.getElementById('c-chamkar-num')?.value !== '' ? parseInt(document.getElementById('c-chamkar-num')?.value, 10) : null,
       chamkar_area: parseFloat(document.getElementById('c-chamkar-area')?.value) || 0,
       chamkar_crops: getChipValues('#c-chamkar-crops'),
       has_rice_barn: document.getElementById('c-rice-barn')?.value || '1',
-      barn_chambers: parseInt(document.getElementById('c-chambers')?.value, 10) || 1,
+      barn_chambers: document.getElementById('c-chambers')?.value !== '' ? parseInt(document.getElementById('c-chambers')?.value, 10) : null,
       barn_clean: document.getElementById('c-barn-clean')?.value || '1',
       barn_free_chemicals: document.getElementById('c-barn-chemicals')?.value || '1',
       cleared_forest: document.getElementById('c-clear-forest')?.value || '2',
@@ -3505,6 +4823,7 @@
     if (inspector) sessionState.inspectorName = inspector;
     const sigData = getSignatureDataUrl();
     farmersStore[farmerKey].confirmation = {
+      saved: true,
       certified_status: document.getElementById('c-certified-status')?.value || '1',
       conclusion_notes: document.getElementById('c-conclusion-notes')?.value.trim() || '',
       inspector_name: inspector,
@@ -3528,33 +4847,131 @@
 
     saveCurrentFarmerForm();
     saveCurrentPlotBaselineForm();
-    saveCurrentPostHarvestForm();
+    if (currentInspectionPhase !== 'phase_1') {
+      saveCurrentPostHarvestForm();
+    }
     saveCurrentConfirmationForm();
+
+    const farmerKey = getFarmerKey(selectedPlot);
+    if (!farmersStore[farmerKey]) {
+      farmersStore[farmerKey] = {};
+    }
+    if (!farmersStore[farmerKey].phases) {
+      farmersStore[farmerKey].phases = {};
+    }
+    farmersStore[farmerKey].phases[currentInspectionPhase] = true;
+    farmersStore[farmerKey].phases[`${currentInspectionPhase}_date`] = new Date().toISOString();
+    saveICSStores();
+
+    updatePhaseIndicatorsForSelectedPlot();
+
+    const inspectionStatePill = document.getElementById('card-inspection-state-pill');
+    if (inspectionStatePill) {
+      if (!currentUser) {
+        inspectionStatePill.className = 'sub-status-pill status-saved';
+        inspectionStatePill.textContent = '🟢 Inspected';
+      } else {
+        inspectionStatePill.className = 'sub-status-pill status-saved';
+        inspectionStatePill.textContent = '🟢 Saved Inspection Record';
+      }
+    }
 
     renderSubplotsListForSelectedPlot();
     refreshAllPlotStyles();
-    showToast(`✅ Saved complete inspection for ${selectedPlot.village || 'Village'} · Family ${selectedPlot.family_id} (Plot ${selectedPlot.plot_id})`);
+
+    const phaseLabels = {
+      phase_1: 'Phase 1: Planting & Growing Baseline',
+      phase_2: 'Phase 2: Harvest & Yield',
+      phase_3: 'Phase 3: Post-Harvest & Conservation Audit'
+    };
+    const pLabel = phaseLabels[currentInspectionPhase] || currentInspectionPhase;
+    showToast(`✅ Saved ${pLabel} for Family ${selectedPlot.family_id} (Plot ${selectedPlot.plot_id})`);
+
+    // Asynchronously sync to backend database if online and authenticated
+    if (currentUser && currentUser.token && navigator.onLine && !currentUser.token.startsWith('fallback-') && !currentUser.token.startsWith('offline-')) {
+      const fRecord = farmersStore[farmerKey] || {};
+      const inspRecord = icsInspections[selectedPlot.id] || {};
+      const phaseEnumMap = {
+        phase_1: 'phase_1_planting',
+        phase_2: 'phase_2_harvest',
+        phase_3: 'phase_3_post_harvest'
+      };
+
+      const payload = {
+        season_code: currentSeason || "2026",
+        farmer_id: fRecord.id || selectedPlot.family_id,
+        parcel_id: String(selectedPlot.id),
+        inspection_date: inspRecord.inspection_date || new Date().toISOString().slice(0, 10),
+        inspection_phase: phaseEnumMap[currentInspectionPhase] || 'phase_1_planting',
+        phase_1_completed: !!(fRecord.phases && fRecord.phases.phase_1),
+        phase_2_completed: !!(fRecord.phases && fRecord.phases.phase_2),
+        phase_3_completed: !!(fRecord.phases && fRecord.phases.phase_3),
+        status: currentInspectionPhase === 'phase_3' ? 'completed' : 'in_progress',
+        recommendation: (confStore[selectedPlot.id] && confStore[selectedPlot.id].certified_status === '2') ? 'conditional' : 'approved_organic',
+        inspector_notes: confStore[selectedPlot.id] ? confStore[selectedPlot.id].conclusion_notes : '',
+        farmer_profile: {
+          total_members: parseInt(fRecord.members_count) || 1,
+          school_age_children: parseInt(fRecord.school_count) || 0,
+          has_latrine: fRecord.has_toilet === '1',
+          has_disabled_members: fRecord.has_disabled === '1',
+          num_cows: parseInt(fRecord.cattle_count) || 0,
+          num_buffalos: parseInt(fRecord.buffalo_count) || 0,
+          num_pigs: 0,
+          has_daily_records_book: (fRecord.farm_records || []).includes('book'),
+          trainings_received: fRecord.trainings || []
+        }
+      };
+
+      fetch('/api/v1/inspections/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${currentUser.token}`
+        },
+        body: JSON.stringify(payload)
+      }).then(r => {
+        if (r.ok) {
+          console.log('[Sync] Inspection successfully synced to backend for plot', selectedPlot.id);
+        } else {
+          r.json().then(e => console.warn('[Sync] Backend save warning:', e.detail));
+        }
+      }).catch(err => {
+        console.warn('[Sync] Network error while saving to backend:', err);
+      });
+    }
   }
 
-  // --- Subplot Card Actions & Inspection Modal ---
   function openSubplotInspectionModal(sp) {
+    if (!sp) return;
+    resetSubplotModalForm();
     editingSubplotInstance = sp;
-    modalPlotRef.textContent = `Family ${sp.parent_family_id} · Plot ${sp.parent_plot_num} · ${sp.code}`;
+    modalPlotRef.textContent = `Family ${sp.parent_family_id} · Plot ${sp.parent_plot_num} (${sp.parent_village || ''}) · Subplot ${sp.code}`;
+
+    const spStatusPill = document.getElementById('subplot-modal-status-pill');
+    if (spStatusPill) {
+      spStatusPill.className = 'sub-status-pill status-saved';
+      spStatusPill.textContent = '🟢 Saved Subplot Record';
+    }
 
     subplotCode.value = sp.code || '';
-    subplotVariety.value = ['Phka Rumduol', 'Red Jasmine', 'Local Variety', 'Sticky Rice', 'Other', 'Fallow'].includes(sp.variety)
-      ? sp.variety
-      : 'Other';
-    if (subplotVariety.value === 'Other') {
-      customVarietyGroup.style.display = 'block';
-      subplotCustomVariety.value = sp.variety || '';
+    if (['Phka Rumduol', 'Red Jasmine', 'Local Variety', 'Sticky Rice', 'Other', 'Fallow'].includes(sp.variety)) {
+      subplotVariety.value = sp.variety;
+    } else if (sp.variety && sp.variety.toLowerCase().includes('local')) {
+      subplotVariety.value = 'Local Variety';
     } else {
-      customVarietyGroup.style.display = 'none';
+      subplotVariety.value = 'Other';
+    }
+
+    if (subplotVariety.value === 'Local Variety') {
+      subplotCustomVariety.value = sp.local_variety_name || (sp.variety.includes('(') ? sp.variety.replace(/.*?\((.*?)\)/, '$1') : (sp.variety !== 'Local Variety' ? sp.variety : ''));
+    } else {
       subplotCustomVariety.value = '';
     }
 
-    subplotAreaPct.value = sp.pct_of_parent || '';
-    subplotAreaHa.value = sp.area_ha || '';
+    updateSubplotFormConditionalFields();
+
+    subplotAreaPct.value = sp.pct_of_parent !== undefined && sp.pct_of_parent !== null ? sp.pct_of_parent : '';
+    subplotAreaHa.value = sp.area_ha !== undefined && sp.area_ha !== null ? sp.area_ha : '';
     subplotNotes.value = sp.notes || '';
 
     // Allocation banner stats
@@ -3571,27 +4988,27 @@
     if (allocRemainingHa) allocRemainingHa.textContent = `${currentModalRemainingHa.toFixed(2)} ha`;
     if (allocMeterUsed) allocMeterUsed.style.width = `${Math.min(100, otherUsedPct)}%`;
 
-    // Extended ICS 2026 fields
+    // Extended ICS 2026 fields - load only if present in this subplot
     setVal('sp-seed-source', sp.seed_source || 'Own saved');
-    setVal('sp-seed-kg', sp.seed_kg || '');
+    setVal('sp-seed-kg', sp.seed_kg !== undefined && sp.seed_kg !== null ? sp.seed_kg : '');
     setVal('sp-planting-date', sp.planting_date || '');
     setVal('sp-planting-method', sp.planting_method || 'Direct seeding');
     setVal('sp-fertilizer-toggle', sp.fertilizer_applied ? 'yes' : 'no');
     const spFertBlock = document.getElementById('sp-fertilizer-block');
     if (spFertBlock) spFertBlock.style.display = sp.fertilizer_applied ? 'block' : 'none';
     setChipValues('#sp-fertilizer-chips', sp.fertilizer_types || []);
-    setVal('sp-fertilizer-qty', sp.fertilizer_qty || '');
+    setVal('sp-fertilizer-qty', sp.fertilizer_qty !== undefined && sp.fertilizer_qty !== null ? sp.fertilizer_qty : '');
     setVal('sp-fertilizer-date', sp.fertilizer_date || '');
 
     setVal('sp-protection-toggle', sp.crop_protection_applied ? 'yes' : 'no');
     const spProtBlock = document.getElementById('sp-protection-block');
     if (spProtBlock) spProtBlock.style.display = sp.crop_protection_applied ? 'block' : 'none';
     setVal('sp-protection-action', sp.protection_action || '');
-    setVal('sp-protection-qty', sp.protection_qty || '');
+    setVal('sp-protection-qty', sp.protection_qty !== undefined && sp.protection_qty !== null ? sp.protection_qty : '');
     setVal('sp-protection-date', sp.protection_date || '');
 
-    setVal('sp-expected-yield', sp.expected_production_kg || '');
-    setVal('sp-expected-sale', sp.expected_sale_kg || '');
+    setVal('sp-expected-yield', sp.expected_production_kg !== undefined && sp.expected_production_kg !== null ? sp.expected_production_kg : '');
+    setVal('sp-expected-sale', sp.expected_sale_kg !== undefined && sp.expected_sale_kg !== null ? sp.expected_sale_kg : '');
 
     validateSubplotAllocation();
     subplotModal.style.display = 'flex';
@@ -3599,40 +5016,58 @@
 
   // --- Dedicated Subplot Harvest Modal (1 Harvest Record per Subplot) ---
   function openSubplotHarvestModal(sp) {
+    if (!sp) return;
+    resetSubplotHarvestModalForm();
     editingHarvestSubplot = sp;
     const plotNum = sp.parent_plot_num || (selectedPlot ? selectedPlot.plot_id : '--');
     const famId = sp.parent_family_id || (selectedPlot ? selectedPlot.family_id : '--');
+    const village = sp.parent_village || (selectedPlot ? selectedPlot.village : '');
 
-    document.getElementById('harvest-modal-plot-ref').textContent = `Family ${famId} · Plot ${plotNum} · Subplot ${sp.code}`;
-    document.getElementById('harvest-modal-title').textContent = `🌾 Harvest: ${sp.code}`;
+    document.getElementById('harvest-modal-plot-ref').textContent = `Family ${famId} · Plot ${plotNum} (${village}) · Subplot ${sp.code}`;
+    document.getElementById('harvest-modal-title').textContent = `🌾 Harvest: Subplot ${sp.code}`;
     document.getElementById('harvest-meta-variety').textContent = sp.variety || 'Rice';
     document.getElementById('harvest-meta-area').textContent = `${sp.area_ha} ha`;
     document.getElementById('harvest-meta-pct').textContent = `${sp.pct_of_parent || 0}%`;
     document.getElementById('harvest-meta-exp').textContent = sp.expected_production_kg ? `${parseFloat(sp.expected_production_kg).toLocaleString()} kg` : '-- kg';
 
     const h = sp.harvest || {};
-    setVal('sh-complete', h.complete || '1');
-    setVal('sh-reason-no', h.reason_no || 'Not mature');
-    setVal('sh-date', h.date || '');
-    setVal('sh-method', h.method || '3');
-    setVal('sh-owner', h.owner || '');
-    setVal('sh-flush', h.flush_qty !== undefined ? h.flush_qty : 0);
-    setVal('sh-dry-loc', h.dry_loc || '1');
-    setVal('sh-payment-type', h.payment_type || '1');
-    setVal('sh-payment-amount', h.payment_amount || '');
-    setVal('sh-actual-kg', h.actual_kg || '');
-    setVal('sh-sale-kg', h.sale_kg || '');
-    setVal('sh-consume-kg', h.consume_kg || '');
-    setVal('sh-seed-kg', h.seed_kg || '');
+    const isHarvestSaved = !!(h && h.saved);
+    const hStatusPill = document.getElementById('harvest-modal-status-pill');
+    if (hStatusPill) {
+      if (isHarvestSaved) {
+        hStatusPill.className = 'sub-status-pill status-saved';
+        hStatusPill.textContent = '🟢 Saved Harvest Record';
+      } else {
+        hStatusPill.className = 'sub-status-pill status-blank';
+        hStatusPill.textContent = '⚪ Blank Form (Not Harvested)';
+      }
+    }
+
+    if (isHarvestSaved) {
+      setVal('sh-complete', h.complete || '1');
+      setVal('sh-reason-no', h.reason_no || 'Not mature');
+      setVal('sh-date', h.date || '');
+      setVal('sh-method', h.method || '3');
+      setVal('sh-owner', h.owner || '');
+      setVal('sh-flush', h.flush_qty !== undefined ? h.flush_qty : 0);
+      setVal('sh-dry-loc', h.dry_loc || '1');
+      setVal('sh-payment-type', h.payment_type || '1');
+      setVal('sh-payment-amount', h.payment_amount || '');
+      setVal('sh-actual-kg', h.actual_kg !== undefined && h.actual_kg !== null ? h.actual_kg : '');
+      setVal('sh-sale-kg', h.sale_kg !== undefined && h.sale_kg !== null ? h.sale_kg : '');
+      setVal('sh-consume-kg', h.consume_kg !== undefined && h.consume_kg !== null ? h.consume_kg : '');
+      setVal('sh-seed-kg', h.seed_kg !== undefined && h.seed_kg !== null ? h.seed_kg : '');
+    }
 
     // Trigger state changes
-    const isDone = (h.complete || '1') === '1';
+    const isDone = (document.getElementById('sh-complete')?.value || '1') === '1';
     const blkInc = document.getElementById('sh-incomplete-block');
     const blkComp = document.getElementById('sh-complete-block');
     if (blkInc) blkInc.style.display = isDone ? 'none' : 'block';
     if (blkComp) blkComp.style.display = isDone ? 'block' : 'none';
 
-    const isMachine = (h.method || '3') === '2' || (h.method || '3') === '3';
+    const methodVal = document.getElementById('sh-method')?.value || '3';
+    const isMachine = methodVal === '2' || methodVal === '3';
     const blkMachine = document.getElementById('sh-machine-block');
     if (blkMachine) blkMachine.style.display = isMachine ? 'flex' : 'none';
 
@@ -3651,6 +5086,7 @@
     const seed = parseFloat(document.getElementById('sh-seed-kg')?.value) || 0;
 
     editingHarvestSubplot.harvest = {
+      saved: true,
       complete: complete,
       reason_no: document.getElementById('sh-reason-no')?.value || '',
       date: document.getElementById('sh-date')?.value || '',
@@ -3677,8 +5113,8 @@
     renderSubplotsListForSelectedPlot();
     updateParcelHarvestSummary();
     subplotHarvestModal.style.display = 'none';
+    resetSubplotHarvestModalForm();
     showToast(`🌾 Saved harvest record for ${editingHarvestSubplot.code} (${actual.toLocaleString()} kg)`);
-    editingHarvestSubplot = null;
   }
 
   function buildSubplotCardBadges(sp) {
@@ -3724,10 +5160,10 @@
     const rows = [];
     rows.push([
       'season_year', 'site', 'village', 'commune', 'family_id', 'farmer_name', 'gender', 'ethnicity',
-      'interviewee_head', 'interviewee_name', 'farmer_status', 'compliance_status', 'members_count', 'children_school',
+      'interviewee_head', 'interviewee_name', 'farmer_status', 'compliance_status', 'trainings_attended', 'members_count', 'children_school',
       'toilet', 'disability', 'livestock_cow', 'livestock_buffalo',
-      'plot_id', 'plot_area_ha', 'land_situation', 'irrigation', 'contamination_risk', 'mitigation_method',
-      'prohibited_used_3yr', 'prohibited_types', 'intercrop_present', 'intercrop_name',
+      'plot_id', 'plot_area_ha', 'land_organic_status', 'land_situation', 'irrigation', 'contamination_risk', 'mitigation_method',
+      'prohibited_used_3yr', 'prohibited_types', 'intercrop_present', 'intercrop_name', 'intercrop_plant_date', 'intercrop_harvest_date', 'intercrop_actual_kg', 'intercrop_sold_kg',
       'exp_last_yr_kg', 'actual_last_yr_kg', 'sold_ircc_last_yr_kg',
       'subplot_id', 'subplot_name', 'variety', 'subplot_pct', 'subplot_ha',
       'seed_source', 'seed_kg', 'planting_date', 'planting_method',
@@ -3801,15 +5237,18 @@
               season,
               csvQ(pSite || sp.parent_site), csvQ(pVillage || sp.parent_village), csvQ(pCommune),
               csvQ(fid), csvQ(f.hoh_name || ''), csvQ(f.hoh_sex || '1'), csvQ(f.ethnicity || '1'),
-              csvQ(f.is_head_interviewee || '1'), csvQ(f.interviewee_name || ''), csvQ(f.status || '1'),
-              csvQ(f.farmer_compliant || '1'), f.members_count || 4, f.school_count || 2,
+              csvQ(f.is_head_interviewee || '1'), csvQ(f.interviewee_name || ''), csvQ(f.status || 'Existing'),
+              csvQ(f.farmer_compliant || 'Compliance'), csvQ((f.trainings || []).join('; ')), f.members_count || 4, f.school_count || 2,
               csvQ(f.has_toilet || '1'), csvQ(f.has_disabled || '2'), f.cattle_count || 0, f.buffalo_count || 0,
-              csvQ(pNum), pArea, csvQ(insp.land_situation || '1'), csvQ(insp.irrigation || '1'),
+              csvQ(pNum), pArea, csvQ(insp.land_status || parcel.organic_status || 'Organic'), csvQ(insp.land_situation || '1'), csvQ(insp.irrigation || '1'),
               csvQ(insp.contamination || '2'), csvQ(insp.avoid_method || ''),
               csvQ(insp.last_prohibited || '2'), csvQ((insp.prohibited_inputs || []).join('; ')),
-              csvQ(insp.other_crop || '2'), csvQ(insp.crop_name || ''),
+              csvQ(insp.other_crop === '1' ? 'Yes' : 'No'), csvQ(insp.crop_name || ''),
+              csvQ(insp.crop_plant_date || ''), csvQ(insp.crop_harvest_date || ''),
+              insp.crop_actual_kg !== undefined && insp.crop_actual_kg !== null ? insp.crop_actual_kg : '',
+              insp.crop_sold_kg !== undefined && insp.crop_sold_kg !== null ? insp.crop_sold_kg : '',
               insp.exp_last_year || '', insp.actual_last_year || '', insp.sold_ircc || '',
-              csvQ(sp.id), csvQ(sp.code), csvQ(sp.variety), sp.pct_of_parent || '', sp.area_ha || '',
+              csvQ(sp.id), csvQ(sp.code), csvQ(sp.variety === 'Local Variety' && sp.local_variety_name ? `Local: ${sp.local_variety_name}` : sp.variety), sp.pct_of_parent || '', sp.area_ha || '',
               csvQ(sp.seed_source || 'Own saved'), sp.seed_kg || '', csvQ(sp.planting_date || ''), csvQ(sp.planting_method || 'Direct seeding'),
               sp.fertilizer_applied ? 'Yes' : 'No', csvQ((sp.fertilizer_types || []).join('; ')), sp.fertilizer_qty || '',
               sp.crop_protection_applied ? 'Yes' : 'No', csvQ(sp.protection_action || ''),
@@ -3833,13 +5272,16 @@
             season,
             csvQ(pSite), csvQ(pVillage), csvQ(pCommune),
             csvQ(fid), csvQ(f.hoh_name || ''), csvQ(f.hoh_sex || '1'), csvQ(f.ethnicity || '1'),
-            csvQ(f.is_head_interviewee || '1'), csvQ(f.interviewee_name || ''), csvQ(f.status || '1'),
-            csvQ(f.farmer_compliant || '1'), f.members_count || 4, f.school_count || 2,
+            csvQ(f.is_head_interviewee || '1'), csvQ(f.interviewee_name || ''), csvQ(f.status || 'Existing'),
+            csvQ(f.farmer_compliant || 'Compliance'), csvQ((f.trainings || []).join('; ')), f.members_count || 4, f.school_count || 2,
             csvQ(f.has_toilet || '1'), csvQ(f.has_disabled || '2'), f.cattle_count || 0, f.buffalo_count || 0,
-            csvQ(pNum), pArea, csvQ(insp.land_situation || '1'), csvQ(insp.irrigation || '1'),
+            csvQ(pNum), pArea, csvQ(insp.land_status || parcel.organic_status || 'Organic'), csvQ(insp.land_situation || '1'), csvQ(insp.irrigation || '1'),
             csvQ(insp.contamination || '2'), csvQ(insp.avoid_method || ''),
             csvQ(insp.last_prohibited || '2'), csvQ((insp.prohibited_inputs || []).join('; ')),
-            csvQ(insp.other_crop || '2'), csvQ(insp.crop_name || ''),
+            csvQ(insp.other_crop === '1' ? 'Yes' : 'No'), csvQ(insp.crop_name || ''),
+            csvQ(insp.crop_plant_date || ''), csvQ(insp.crop_harvest_date || ''),
+            insp.crop_actual_kg !== undefined && insp.crop_actual_kg !== null ? insp.crop_actual_kg : '',
+            insp.crop_sold_kg !== undefined && insp.crop_sold_kg !== null ? insp.crop_sold_kg : '',
             insp.exp_last_year || '', insp.actual_last_year || '', insp.sold_ircc || '',
             '', 'Main Plot (Whole)', 'Whole Plot', '100', pArea,
             '', '', '', '',
@@ -3895,5 +5337,1066 @@
     URL.revokeObjectURL(url);
   }
 
+  // ==========================================================
+  // UNIFIED ROLE-BASED AUTHENTICATION & PROGRESSIVE DISCLOSURE
+  // ==========================================================
+  let currentUser = null; // null => 'public' (no login) | { role, full_name, email, token, user_id }
+
+  async function initAuthSession() {
+    try {
+      const stored = localStorage.getItem('ibis_auth_user');
+      if (stored) {
+        currentUser = JSON.parse(stored);
+        if (currentUser && currentUser.token && !currentUser.token.startsWith('fallback-') && !currentUser.token.startsWith('offline-')) {
+          // Validate token with backend /me endpoint
+          try {
+            const resp = await fetch('/api/v1/auth/me', {
+              headers: { 'Authorization': `Bearer ${currentUser.token}` }
+            });
+            if (resp.ok) {
+              const freshUser = await resp.json();
+              currentUser = {
+                ...currentUser,
+                full_name: freshUser.full_name || currentUser.full_name,
+                role: freshUser.role || currentUser.role,
+                assigned_landscapes: freshUser.assigned_landscapes || [],
+                assigned_villages: freshUser.assigned_villages || []
+              };
+              localStorage.setItem('ibis_auth_user', JSON.stringify(currentUser));
+            } else if (resp.status === 401 || resp.status === 403) {
+              console.warn('[Auth] Stored session expired or invalid. Reverting to public mode.');
+              currentUser = null;
+              localStorage.removeItem('ibis_auth_user');
+            }
+          } catch (netErr) {
+            console.warn('[Auth] Backend unreachable during session verification, keeping cached session.');
+          }
+        }
+      }
+    } catch (e) {
+      currentUser = null;
+    }
+    applyUserTerritoryFilter(true);
+    updateAuthUI();
+  }
+
+  function updateAuthUI() {
+    const role = currentUser ? currentUser.role : 'public';
+    document.body.className = `role-${role}`;
+
+    const btnOpenAuth = document.getElementById('btn-open-auth');
+    const authBtnLabel = document.getElementById('auth-btn-label');
+    const userProfileMenu = document.getElementById('user-profile-menu');
+    const userDisplayName = document.getElementById('user-display-name');
+    const userDisplayRole = document.getElementById('user-display-role');
+    const btnAnnualGis = document.getElementById('btn-annual-gis');
+    const menuBtnGis = document.getElementById('menu-btn-gis');
+    const btnExportAll = document.getElementById('btn-export-all');
+
+    const drawerTabBar = document.getElementById('drawer-tab-bar');
+    const drawerScrollBody = document.getElementById('drawer-scrollable-body');
+
+    const mapStatusLegend = document.getElementById('map-status-legend');
+    const seasonSelectorWrapper = document.getElementById('season-selector-wrapper');
+    const traceStatusBadge = document.getElementById('traceability-status-badge');
+    const traceOriginCard = document.getElementById('traceability-origin-card');
+
+    // Inspector Sidebar Elements
+    const inspectorSidebar = document.getElementById('inspector-sidebar');
+    const btnFloatingInspectorMenu = document.getElementById('btn-floating-inspector-menu');
+    const sidebarOfficerName = document.getElementById('sidebar-officer-name');
+    const sidebarOfficerRole = document.getElementById('sidebar-officer-role');
+    const sidebarSyncPill = document.getElementById('sidebar-sync-pill');
+    const btnSidebarGis = document.getElementById('btn-sidebar-gis');
+    const sidebarSeasonSelect = document.getElementById('sidebar-season-select');
+    const sidebarSeasonIndicator = document.getElementById('sidebar-kpi-season');
+
+    if (!currentUser) {
+      // Public / General User Mode
+      if (authBtnLabel) authBtnLabel.textContent = 'Sign In';
+      if (btnOpenAuth) {
+        btnOpenAuth.title = 'Sign In (Field Staff & Admin)';
+        btnOpenAuth.classList.remove('logged-in');
+      }
+      if (userProfileMenu) userProfileMenu.style.display = 'none';
+      if (btnAnnualGis) btnAnnualGis.style.display = 'none';
+      if (menuBtnGis) menuBtnGis.style.display = 'none';
+      if (btnExportAll) btnExportAll.style.display = 'none';
+
+      // Hide inspection legend & season selector for general users
+      if (mapStatusLegend) mapStatusLegend.style.display = 'none';
+      if (seasonSelectorWrapper) seasonSelectorWrapper.style.display = 'none';
+      if (traceStatusBadge) traceStatusBadge.style.display = 'none';
+
+      // Show Traceability & Origin Card for general public visitors
+      if (traceOriginCard) traceOriginCard.style.display = 'block';
+
+      // Hide inspector sidebar and floating menu in public mode
+      if (inspectorSidebar) inspectorSidebar.style.display = 'none';
+      if (btnFloatingInspectorMenu) btnFloatingInspectorMenu.style.display = 'none';
+
+      // Hide inspection tabs from public view
+      if (drawerTabBar) drawerTabBar.style.display = 'none';
+      if (drawerScrollBody) drawerScrollBody.style.display = 'none';
+
+      const inspectionStatePill = document.getElementById('card-inspection-state-pill');
+      if (inspectionStatePill) {
+        inspectionStatePill.className = 'sub-status-pill status-saved';
+        inspectionStatePill.textContent = '🟢 Inspected';
+      }
+    } else {
+      // Authenticated Staff / Management Mode
+      const displayName = currentUser.full_name || currentUser.email || 'Staff Officer';
+      if (authBtnLabel) authBtnLabel.textContent = displayName.split(' ')[0];
+      if (btnOpenAuth) {
+        btnOpenAuth.title = `Signed in as ${displayName} (${currentUser.role})`;
+        btnOpenAuth.classList.add('logged-in');
+      }
+      if (userDisplayName) userDisplayName.textContent = displayName;
+      if (userDisplayRole) {
+        userDisplayRole.textContent = currentUser.role === 'admin' ? 'Administrator' : 'Field Inspector';
+        userDisplayRole.className = `user-role-badge role-badge-${currentUser.role}`;
+      }
+
+      // Show Export Data button for authenticated staff
+      if (btnExportAll) btnExportAll.style.display = 'flex';
+
+      // Show inspection legend & season selector for authenticated staff
+      if (mapStatusLegend) mapStatusLegend.style.display = 'block';
+      if (seasonSelectorWrapper) seasonSelectorWrapper.style.display = 'flex';
+      if (traceStatusBadge) traceStatusBadge.style.display = 'inline-block';
+
+      // Hide Traceability & Marketing Card for field inspectors & admins (clean workflow focused)
+      if (traceOriginCard) traceOriginCard.style.display = 'none';
+
+      // Unlock Annual GIS Update & Admin Workspace for Admin
+      const btnSidebarAdmin = document.getElementById('btn-sidebar-admin-workspace');
+      if (currentUser.role === 'admin') {
+        if (btnAnnualGis) btnAnnualGis.style.display = 'flex';
+        if (menuBtnGis) menuBtnGis.style.display = 'flex';
+        if (btnSidebarGis) btnSidebarGis.style.display = 'flex';
+        if (btnSidebarAdmin) btnSidebarAdmin.style.display = 'flex';
+      } else {
+        if (btnAnnualGis) btnAnnualGis.style.display = 'none';
+        if (menuBtnGis) menuBtnGis.style.display = 'none';
+        if (btnSidebarGis) btnSidebarGis.style.display = 'none';
+        if (btnSidebarAdmin) btnSidebarAdmin.style.display = 'none';
+      }
+
+      // Show Inspector Sidebar in field inspector mode
+      if (inspectorSidebar) {
+        inspectorSidebar.style.display = 'flex';
+        inspectorSidebar.classList.remove('collapsed');
+      }
+      if (btnFloatingInspectorMenu) {
+        btnFloatingInspectorMenu.style.display = 'none';
+        const floatingIcon = document.getElementById('floating-menu-icon');
+        if (floatingIcon) {
+          floatingIcon.textContent = '☰';
+        }
+        btnFloatingInspectorMenu.title = currentUser.role === 'admin' ? 'Expand System Administration Panel' : 'Expand Inspector Tools Panel';
+      }
+      if (sidebarOfficerName) {
+        let cleanName = displayName;
+        if (cleanName.includes('IRCC System Administrator') || cleanName.includes('IRCC Administrator') || cleanName.includes('IRCC System Administration')) {
+          cleanName = 'System Administrator';
+        }
+        sidebarOfficerName.textContent = cleanName;
+      }
+      if (sidebarOfficerRole) {
+        sidebarOfficerRole.textContent = currentUser.role === 'admin' ? 'Administrator' : 'Field Inspector';
+      }
+      if (sidebarSyncPill) {
+        sidebarSyncPill.textContent = navigator.onLine ? '🟢 Online' : '🟡 Offline Mode';
+      }
+      if (sidebarSeasonSelect) {
+        sidebarSeasonSelect.value = currentSeason;
+      }
+      if (sidebarSeasonIndicator) {
+        sidebarSeasonIndicator.textContent = currentSeason;
+      }
+
+      // Show inspection editor tabs
+      if (drawerTabBar) drawerTabBar.style.display = 'flex';
+      if (drawerScrollBody) drawerScrollBody.style.display = 'block';
+    }
+
+    // Refresh plot styles on map (public organic green vs staff inspection status colors)
+    refreshAllPlotStyles();
+
+    // Ensure Leaflet resizes properly to the newly available screen
+    setTimeout(() => {
+      if (map) map.invalidateSize();
+    }, 150);
+  }
+
+  function setAuthUser(userObj) {
+    currentUser = userObj;
+    try {
+      if (userObj) {
+        localStorage.setItem('ibis_auth_user', JSON.stringify(userObj));
+      } else {
+        localStorage.removeItem('ibis_auth_user');
+      }
+    } catch(e) {}
+
+    // Immediately close authentication modal & clear inputs on any sign-in / sign-out
+    if (modalAuth) modalAuth.style.display = 'none';
+    if (authPinInput) authPinInput.value = '';
+    if (authPasswordInput) authPasswordInput.value = '';
+
+    if (!userObj) {
+      // Complete clean reset on sign out
+      if (plotDrawer) plotDrawer.classList.add('closed');
+      const modalAdminWorkspace = document.getElementById('modal-admin-workspace');
+      if (modalAdminWorkspace) modalAdminWorkspace.style.display = 'none';
+      const modalAdminGis = document.getElementById('modal-admin-gis');
+      if (modalAdminGis) modalAdminGis.style.display = 'none';
+
+      // Cancel drawing session if active
+      if (isDrawingSubplot) {
+        cancelSubplotDrawing();
+      }
+
+      // Unselect active plot & clear highlights
+      if (selectedLayer) {
+        selectedLayer = null;
+      }
+      selectedPlot = null;
+      resetAllInspectionForms();
+    }
+
+    applyUserTerritoryFilter();
+    updateAuthUI();
+  }
+
+  // --- Auth Modal & Handlers ---
+  const modalAuth = document.getElementById('modal-auth');
+  const btnOpenAuth = document.getElementById('btn-open-auth');
+  const userProfileMenu = document.getElementById('user-profile-menu');
+  const btnCloseAuthModal = document.getElementById('btn-close-auth-modal');
+  const btnCancelAuthPin = document.getElementById('btn-cancel-auth-pin');
+  const btnCancelAuthPwd = document.getElementById('btn-cancel-auth-pwd');
+
+  const tabBtnPin = document.getElementById('tab-btn-pin');
+  const tabBtnPwd = document.getElementById('tab-btn-pwd');
+  const formAuthPin = document.getElementById('form-auth-pin');
+  const formAuthPwd = document.getElementById('form-auth-pwd');
+  const authPinInput = document.getElementById('auth-pin-input');
+  const authEmailInput = document.getElementById('auth-email-input');
+  const authPasswordInput = document.getElementById('auth-password-input');
+
+  const btnDemoInspector = document.getElementById('btn-demo-inspector');
+  const btnDemoAdmin = document.getElementById('btn-demo-admin');
+  const menuBtnSignout = document.getElementById('menu-btn-signout');
+
+  function openAuthModal() {
+    if (userProfileMenu) userProfileMenu.style.display = 'none';
+    if (modalAuth) {
+      modalAuth.style.display = 'flex';
+      if (authPinInput) {
+        authPinInput.value = '';
+        setTimeout(() => authPinInput.focus(), 150);
+      }
+    }
+  }
+
+  function closeAuthModal() {
+    if (modalAuth) modalAuth.style.display = 'none';
+  }
+
+  if (btnOpenAuth) {
+    btnOpenAuth.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (!currentUser) {
+        openAuthModal();
+      } else {
+        // Toggle profile menu
+        if (userProfileMenu) {
+          const isShown = userProfileMenu.style.display === 'block';
+          userProfileMenu.style.display = isShown ? 'none' : 'block';
+        }
+      }
+    });
+  }
+
+  // Close profile menu on outside click
+  document.addEventListener('click', (e) => {
+    if (userProfileMenu && !userProfileMenu.contains(e.target) && e.target !== btnOpenAuth) {
+      userProfileMenu.style.display = 'none';
+    }
+  });
+
+  if (btnCloseAuthModal) btnCloseAuthModal.addEventListener('click', closeAuthModal);
+  if (btnCancelAuthPin) btnCancelAuthPin.addEventListener('click', closeAuthModal);
+  if (btnCancelAuthPwd) btnCancelAuthPwd.addEventListener('click', closeAuthModal);
+
+  // Tab switching
+  if (tabBtnPin && tabBtnPwd) {
+    tabBtnPin.addEventListener('click', () => {
+      tabBtnPin.classList.add('active');
+      tabBtnPwd.classList.remove('active');
+      if (formAuthPin) formAuthPin.style.display = 'block';
+      if (formAuthPwd) formAuthPwd.style.display = 'none';
+      if (authPinInput) authPinInput.focus();
+    });
+
+    tabBtnPwd.addEventListener('click', () => {
+      tabBtnPwd.classList.add('active');
+      tabBtnPin.classList.remove('active');
+      if (formAuthPwd) formAuthPwd.style.display = 'block';
+      if (formAuthPin) formAuthPin.style.display = 'none';
+      if (authEmailInput) authEmailInput.focus();
+    });
+  }
+
+  // Quick Demo Access Buttons (Connects to backend for genuine cryptographic tokens)
+  if (btnDemoInspector) {
+    btnDemoInspector.addEventListener('click', async () => {
+      try {
+        const resp = await fetch('/api/v1/auth/pin-login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pin: '1234', role: 'inspector' })
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          setAuthUser({
+            role: data.role || 'inspector',
+            full_name: data.full_name || 'Inspector Sok Chea',
+            email: 'inspector@ibisrice.com',
+            user_id: data.user_id,
+            token: data.access_token,
+            assigned_landscapes: data.assigned_landscapes || ['Keo Seima'],
+            assigned_villages: data.assigned_villages || []
+          });
+          closeAuthModal();
+          showToast('🧑‍🌾 Signed in as Field Inspector (Assigned: Keo Seima)');
+          return;
+        }
+      } catch (err) {}
+      // Fallback
+      setAuthUser({
+        role: 'inspector',
+        full_name: 'Inspector Sok Chea',
+        email: 'inspector@ibisrice.com',
+        user_id: 'insp-demo-01',
+        token: 'fallback-inspector-token',
+        assigned_landscapes: ['Keo Seima'],
+        assigned_villages: []
+      });
+      closeAuthModal();
+      showToast('🧑‍🌾 Signed in as Field Inspector (Assigned: Keo Seima)');
+    });
+  }
+
+  if (btnDemoAdmin) {
+    btnDemoAdmin.addEventListener('click', async () => {
+      try {
+        const resp = await fetch('/api/v1/auth/pin-login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pin: '9999', role: 'admin' })
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          setAuthUser({
+            role: data.role || 'admin',
+            full_name: (data.full_name && !data.full_name.includes('IRCC')) ? data.full_name : 'System Administrator',
+            email: 'admin@ibisrice.com',
+            user_id: data.user_id,
+            token: data.access_token,
+            assigned_landscapes: [],
+            assigned_villages: []
+          });
+          closeAuthModal();
+          showToast('🛡️ Signed in as System Administrator (Nationwide)');
+          return;
+        }
+      } catch (err) {}
+      // Fallback
+      setAuthUser({
+        role: 'admin',
+        full_name: 'System Administrator',
+        email: 'admin@ibisrice.com',
+        user_id: 'admin-demo-01',
+        token: 'fallback-admin-token',
+        assigned_landscapes: [],
+        assigned_villages: []
+      });
+      closeAuthModal();
+      showToast('🛡️ Signed in as System Administrator (Nationwide)');
+    });
+  }
+
+  // PIN Form Submit
+  if (formAuthPin) {
+    formAuthPin.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const pin = authPinInput ? authPinInput.value.trim() : '';
+      if (!pin) {
+        showToast('Please enter your 4-digit PIN');
+        return;
+      }
+
+      // Fast PIN login API check
+      try {
+        const resp = await fetch('/api/v1/auth/pin-login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pin })
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          setAuthUser({
+            role: data.role || 'inspector',
+            full_name: data.full_name || 'Field Officer',
+            email: data.role === 'admin' ? 'admin@ibisrice.com' : 'inspector@ibisrice.com',
+            user_id: data.user_id,
+            token: data.access_token,
+            assigned_landscapes: data.assigned_landscapes || [],
+            assigned_villages: data.assigned_villages || []
+          });
+          closeAuthModal();
+          showToast(`✅ Welcome back, ${data.full_name}`);
+          return;
+        } else {
+          const err = await resp.json().catch(() => ({}));
+          showToast(`❌ ${err.detail || 'Incorrect PIN code'}`);
+          return;
+        }
+      } catch (err) {
+        // Fallback for offline PIN unlock in remote protected zones
+        if (pin === '1234') {
+          setAuthUser({
+            role: 'inspector',
+            full_name: 'Inspector Sok Chea (Offline)',
+            email: 'inspector@ibisrice.com',
+            user_id: 'offline-inspector',
+            token: 'offline-token',
+            assigned_landscapes: ['Keo Seima'],
+            assigned_villages: []
+          });
+          closeAuthModal();
+          showToast('⚡ Offline Field Session Unlocked (Assigned: Keo Seima)');
+          return;
+        } else if (pin === '9999') {
+          setAuthUser({
+            role: 'admin',
+            full_name: 'System Administrator (Offline)',
+            email: 'admin@ibisrice.com',
+            user_id: 'offline-admin',
+            token: 'offline-admin-token',
+            assigned_landscapes: [],
+            assigned_villages: []
+          });
+          closeAuthModal();
+          showToast('⚡ Offline Admin Session Unlocked (Nationwide)');
+          return;
+        }
+      }
+
+      showToast('❌ Incorrect PIN. Inspector: 1234 | Admin: 9999');
+    });
+  }
+
+  // Password Form Submit
+  if (formAuthPwd) {
+    formAuthPwd.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const email = authEmailInput ? authEmailInput.value.trim() : '';
+      const password = authPasswordInput ? authPasswordInput.value : '';
+      
+      try {
+        const resp = await fetch('/api/v1/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+        if (resp.ok) {
+          const data = await resp.json();
+          setAuthUser({
+            role: data.role || 'inspector',
+            full_name: data.full_name || email,
+            email: email,
+            user_id: data.user_id,
+            token: data.access_token,
+            assigned_landscapes: data.assigned_landscapes || [],
+            assigned_villages: data.assigned_villages || []
+          });
+          closeAuthModal();
+          showToast(`✅ Welcome back, ${data.full_name}`);
+        } else {
+          showToast('❌ Incorrect email or password');
+        }
+      } catch (err) {
+        showToast('❌ Server unreachable. Please try PIN unlock.');
+      }
+    });
+  }
+
+  // Sign out
+  if (menuBtnSignout) {
+    menuBtnSignout.addEventListener('click', () => {
+      if (userProfileMenu) userProfileMenu.style.display = 'none';
+      setAuthUser(null);
+      showToast('🚪 Signed out. Public mode active.');
+    });
+  }
+
+  // ==========================================================
+  // ANNUAL GIS GEOJSON INGESTION & DIFF WORKBENCH
+  // ==========================================================
+  const modalAdminGis = document.getElementById('modal-admin-gis');
+  const btnAnnualGis = document.getElementById('btn-annual-gis');
+  const menuBtnGis = document.getElementById('menu-btn-gis');
+  const btnCloseGisModal = document.getElementById('btn-close-gis-modal');
+  const gisFileInput = document.getElementById('gis-file-input');
+  const btnRunGisDiff = document.getElementById('btn-run-gis-diff');
+  const btnUseServerGeojson = document.getElementById('btn-use-server-geojson');
+  const gisDiffOutput = document.getElementById('gis-diff-output');
+  const btnCommitGisImport = document.getElementById('btn-commit-gis-import');
+  const gisTargetSeason = document.getElementById('gis-target-season');
+
+  let activeGisDiffData = null;
+  let activeGisFile = null;
+
+  function openGisModal() {
+    if (userProfileMenu) userProfileMenu.style.display = 'none';
+    if (modalAdminGis) {
+      modalAdminGis.style.display = 'flex';
+      if (gisDiffOutput) gisDiffOutput.style.display = 'none';
+      activeGisDiffData = null;
+      activeGisFile = null;
+      if (gisFileInput) gisFileInput.value = '';
+      if (btnRunGisDiff) btnRunGisDiff.disabled = true;
+    }
+  }
+
+  function closeGisModal() {
+    if (modalAdminGis) modalAdminGis.style.display = 'none';
+  }
+
+  if (btnAnnualGis) btnAnnualGis.addEventListener('click', openGisModal);
+  if (menuBtnGis) menuBtnGis.addEventListener('click', openGisModal);
+  if (btnCloseGisModal) btnCloseGisModal.addEventListener('click', closeGisModal);
+
+  if (gisFileInput) {
+    gisFileInput.addEventListener('change', (e) => {
+      if (e.target.files && e.target.files.length > 0) {
+        activeGisFile = e.target.files[0];
+        if (btnRunGisDiff) btnRunGisDiff.disabled = false;
+      }
+    });
+  }
+
+  if (btnUseServerGeojson) {
+    btnUseServerGeojson.addEventListener('click', async () => {
+      showToast('Fetching server GeoJSON sample for diff...');
+      try {
+        const resp = await fetch('data/plots.geojson');
+        const blob = await resp.blob();
+        activeGisFile = new File([blob], 'all_ibis_rice_plots.geojson', { type: 'application/json' });
+        if (btnRunGisDiff) btnRunGisDiff.disabled = false;
+        showToast('📂 Loaded server plots.geojson ready to analyze');
+        runGisDiff();
+      } catch (err) {
+        showToast(`Failed to load server GeoJSON: ${err.message}`);
+      }
+    });
+  }
+
+  async function runGisDiff() {
+    if (!activeGisFile) {
+      showToast('Please select a GeoJSON file first');
+      return;
+    }
+
+    const season = gisTargetSeason ? gisTargetSeason.value : '2027';
+    showToast('Analyzing spatial diff with database...');
+    if (btnRunGisDiff) btnRunGisDiff.disabled = true;
+
+    const formData = new FormData();
+    formData.append('season_code', season);
+    formData.append('file', activeGisFile);
+
+    try {
+      const resp = await fetch('/api/v1/admin/gis/preview-diff', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!resp.ok) {
+        const errData = await resp.json();
+        throw new Error(errData.detail?.message || errData.detail || 'Diff failed');
+      }
+
+      activeGisDiffData = await resp.json();
+      displayGisDiffResults(activeGisDiffData);
+      showToast(`✅ Diff complete: ${activeGisDiffData.total_features} plots analyzed`);
+    } catch (err) {
+      console.error('GIS diff error:', err);
+      showToast(`Diff error: ${err.message}`);
+    } finally {
+      if (btnRunGisDiff) btnRunGisDiff.disabled = false;
+    }
+  }
+
+  if (btnRunGisDiff) {
+    btnRunGisDiff.addEventListener('click', runGisDiff);
+  }
+
+  function displayGisDiffResults(diff) {
+    if (!gisDiffOutput) return;
+    gisDiffOutput.style.display = 'block';
+
+    const kpiTotal = document.getElementById('diff-kpi-total');
+    const kpiUnchanged = document.getElementById('diff-kpi-unchanged');
+    const kpiModified = document.getElementById('diff-kpi-modified');
+    const kpiNew = document.getElementById('diff-kpi-new');
+    const kpiRemoved = document.getElementById('diff-kpi-removed');
+
+    if (kpiTotal) kpiTotal.textContent = (diff.total_features || 0).toLocaleString();
+    if (kpiUnchanged) kpiUnchanged.textContent = (diff.unchanged_count || 0).toLocaleString();
+    if (kpiModified) kpiModified.textContent = (diff.modified_count || 0).toLocaleString();
+    if (kpiNew) kpiNew.textContent = (diff.new_count || 0).toLocaleString();
+    if (kpiRemoved) kpiRemoved.textContent = (diff.removed_count || 0).toLocaleString();
+
+    const tbody = document.getElementById('diff-table-body');
+    if (tbody) {
+      tbody.innerHTML = '';
+      const items = diff.items_sample || [];
+      if (items.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:#94a3b8;">All plots are 100% identical to active database.</td></tr>';
+      } else {
+        items.slice(0, 25).forEach(item => {
+          const tr = document.createElement('tr');
+          let statusBadge = '<span style="color:#60a5fa">New</span>';
+          if (item.diff_status === 'BOUNDARY_MODIFIED') statusBadge = '<span style="color:#fbbf24">Modified</span>';
+          else if (item.diff_status === 'REMOVED') statusBadge = '<span style="color:#f87171">Archived</span>';
+          
+          tr.innerHTML = `
+            <td><strong>${escapeHtml(item.plot_code)}</strong></td>
+            <td>${escapeHtml(item.family_code)}</td>
+            <td>${escapeHtml(item.village_name)}</td>
+            <td>${statusBadge}</td>
+            <td>${item.area_diff_ha ? (item.area_diff_ha > 0 ? '+' : '') + item.area_diff_ha.toFixed(2) + ' ha' : '0.00 ha'}</td>
+          `;
+          tbody.appendChild(tr);
+        });
+      }
+    }
+  }
+
+  if (btnCommitGisImport) {
+    btnCommitGisImport.addEventListener('click', async () => {
+      if (!activeGisFile) {
+        showToast('No active file to commit');
+        return;
+      }
+      const season = gisTargetSeason ? gisTargetSeason.value : '2027';
+      showToast(`Committing GIS update for Season ${season}...`);
+      btnCommitGisImport.disabled = true;
+
+      const formData = new FormData();
+      formData.append('season_code', season);
+      formData.append('file', activeGisFile);
+
+      try {
+        const resp = await fetch('/api/v1/admin/gis/commit', {
+          method: 'POST',
+          body: formData
+        });
+        if (!resp.ok) throw new Error('Commit failed');
+        const result = await resp.json();
+        showToast(`🎉 Successfully committed ${result.total_processed} plots for Season ${season}!`);
+        closeGisModal();
+      } catch (err) {
+        showToast(`Commit error: ${err.message}`);
+      } finally {
+        btnCommitGisImport.disabled = false;
+      }
+    });
+  }
+
+  // --- Hero Discovery & Sanctuary Quick Explorer ---
+  const SANCTUARY_COORDINATES = {
+    'Preah Vihear': { center: [13.92, 104.95], zoom: 11 },
+    'Keo Seima': { center: [12.35, 106.65], zoom: 11 },
+    'Siem Pang': { center: [14.28, 106.38], zoom: 11 },
+    'Chhaeb': { center: [13.78, 105.15], zoom: 11 },
+  };
+
+  function initHeroDiscoveryCard() {
+    const heroCard = document.getElementById('hero-discovery-card');
+    const toggleBtn = document.getElementById('btn-toggle-hero-card');
+    if (!heroCard) return;
+
+    if (toggleBtn) {
+      toggleBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isMin = heroCard.classList.toggle('minimized');
+        const iconSpan = toggleBtn.querySelector('.toggle-icon');
+        if (iconSpan) iconSpan.textContent = isMin ? '+' : '−';
+        try { localStorage.setItem('ibis_hero_minimized', isMin ? '1' : '0'); } catch(e) {}
+      });
+    }
+
+    // Restore minimized state if user previously preferred
+    try {
+      if (localStorage.getItem('ibis_hero_minimized') === '1') {
+        heroCard.classList.add('minimized');
+        const iconSpan = toggleBtn ? toggleBtn.querySelector('.toggle-icon') : null;
+        if (iconSpan) iconSpan.textContent = '+';
+      }
+    } catch(e) {}
+
+    // When minimized, clicking card header expands it
+    heroCard.addEventListener('click', (e) => {
+      if (heroCard.classList.contains('minimized') && !e.target.closest('.hero-toggle-btn')) {
+        heroCard.classList.remove('minimized');
+        const iconSpan = toggleBtn ? toggleBtn.querySelector('.toggle-icon') : null;
+        if (iconSpan) iconSpan.textContent = '−';
+        try { localStorage.setItem('ibis_hero_minimized', '0'); } catch(e) {}
+      }
+    });
+
+    // Landscape explorer chips
+    const chips = heroCard.querySelectorAll('.landscape-chip');
+    chips.forEach((chip) => {
+      chip.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const landscape = chip.getAttribute('data-landscape');
+        const target = SANCTUARY_COORDINATES[landscape];
+        if (target && map) {
+          map.flyTo(target.center, target.zoom, { duration: 1.5 });
+          showToast(`🦅 Exploring ${landscape} Wildlife Sanctuary`);
+          
+          // Filter site dropdown if available
+          const filterSite = document.getElementById('filter-site');
+          if (filterSite) {
+            for (let i = 0; i < filterSite.options.length; i++) {
+              if (filterSite.options[i].text.toLowerCase().includes(landscape.toLowerCase())) {
+                filterSite.selectedIndex = i;
+                filterSite.dispatchEvent(new Event('change'));
+                break;
+              }
+            }
+          }
+        }
+      });
+    });
+  }
+
+  // --- Admin Workspace & Inspector Territory Management ---
+  let allAdminTerritories = [];
+
+  function initAdminWorkspace() {
+    const modalAdmin = document.getElementById('modal-admin-workspace');
+    const btnOpenAdmin = document.getElementById('btn-sidebar-admin-workspace');
+    const btnCloseAdmin = document.getElementById('btn-close-admin-workspace');
+
+    if (btnOpenAdmin) {
+      btnOpenAdmin.addEventListener('click', () => {
+        if (modalAdmin) modalAdmin.style.display = 'flex';
+        loadAdminUsers();
+        loadAdminTerritories();
+      });
+    }
+
+    if (btnCloseAdmin) {
+      btnCloseAdmin.addEventListener('click', () => {
+        if (modalAdmin) modalAdmin.style.display = 'none';
+      });
+    }
+
+    // Tabs
+    const tabs = [
+      { btnId: 'nav-btn-inspectors', panelId: 'admin-tab-inspectors' },
+      { btnId: 'nav-btn-export', panelId: 'admin-tab-export' },
+      { btnId: 'nav-btn-gis', panelId: 'admin-tab-gis' }
+    ];
+
+    tabs.forEach(({ btnId, panelId }) => {
+      const b = document.getElementById(btnId);
+      if (b) {
+        b.addEventListener('click', () => {
+          tabs.forEach(t => {
+            const btn = document.getElementById(t.btnId);
+            const pnl = document.getElementById(t.panelId);
+            if (btn) btn.classList.toggle('active', t.btnId === btnId);
+            if (pnl) {
+              pnl.style.display = t.btnId === btnId ? 'block' : 'none';
+              pnl.classList.toggle('active', t.btnId === btnId);
+            }
+          });
+        });
+      }
+    });
+
+    // Launch GIS Workbench button from inside workspace
+    const btnLaunchGis = document.getElementById('btn-launch-gis-workbench');
+    const modalGis = document.getElementById('modal-admin-gis');
+    if (btnLaunchGis) {
+      btnLaunchGis.addEventListener('click', () => {
+        if (modalAdmin) modalAdmin.style.display = 'none';
+        if (modalGis) modalGis.style.display = 'flex';
+      });
+    }
+
+    // Add Inspector Form Toggle
+    const editorCard = document.getElementById('admin-user-editor-card');
+    const btnOpenAdd = document.getElementById('btn-open-add-user-modal');
+    const btnCancelEditor = document.getElementById('btn-cancel-user-editor');
+    const btnDismissEditor = document.getElementById('btn-dismiss-user-editor');
+
+    const toggleEditor = (show, user = null) => {
+      if (!editorCard) return;
+      editorCard.style.display = show ? 'block' : 'none';
+      if (show) {
+        const title = document.getElementById('editor-user-title');
+        const idInput = document.getElementById('admin-user-id');
+        const nameInput = document.getElementById('admin-user-name');
+        const emailInput = document.getElementById('admin-user-email');
+        const phoneInput = document.getElementById('admin-user-phone');
+        const roleInput = document.getElementById('admin-user-role');
+        const pinInput = document.getElementById('admin-user-pin');
+
+        if (user) {
+          if (title) title.textContent = `Edit Inspector: ${user.full_name}`;
+          if (idInput) idInput.value = user.id;
+          if (nameInput) nameInput.value = user.full_name || '';
+          if (emailInput) emailInput.value = user.email || '';
+          if (phoneInput) phoneInput.value = user.phone || '';
+          if (roleInput) roleInput.value = user.role || 'inspector';
+          if (pinInput) pinInput.value = user.pin || '1234';
+
+          const assignedLands = user.assigned_landscapes || [];
+          document.querySelectorAll('.territory-landscape-checkbox').forEach(cb => {
+            cb.checked = assignedLands.includes(cb.value);
+          });
+        } else {
+          if (title) title.textContent = 'Add New Field Inspector';
+          if (idInput) idInput.value = '';
+          if (nameInput) nameInput.value = '';
+          if (emailInput) emailInput.value = '';
+          if (phoneInput) phoneInput.value = '';
+          if (roleInput) roleInput.value = 'inspector';
+          if (pinInput) pinInput.value = '1234';
+          document.querySelectorAll('.territory-landscape-checkbox').forEach(cb => {
+            cb.checked = false;
+          });
+        }
+      }
+    };
+
+    if (btnOpenAdd) btnOpenAdd.addEventListener('click', () => toggleEditor(true));
+    if (btnCancelEditor) btnCancelEditor.addEventListener('click', () => toggleEditor(false));
+    if (btnDismissEditor) btnDismissEditor.addEventListener('click', () => toggleEditor(false));
+
+    // Save Inspector Form
+    const formUser = document.getElementById('form-admin-user');
+    if (formUser) {
+      formUser.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const userId = document.getElementById('admin-user-id')?.value;
+        const fullName = document.getElementById('admin-user-name')?.value.trim();
+        const email = document.getElementById('admin-user-email')?.value.trim();
+        const phone = document.getElementById('admin-user-phone')?.value.trim();
+        const role = document.getElementById('admin-user-role')?.value;
+        const pin = document.getElementById('admin-user-pin')?.value.trim();
+
+        const selectedLands = [];
+        document.querySelectorAll('.territory-landscape-checkbox:checked').forEach(cb => {
+          selectedLands.push(cb.value);
+        });
+
+        if (!fullName) {
+          showToast('Please enter inspector name');
+          return;
+        }
+
+        const payload = {
+          full_name: fullName,
+          email: email || null,
+          phone: phone || null,
+          role: role || 'inspector',
+          pin: pin || '1234',
+          assigned_landscapes: selectedLands,
+          assigned_villages: [],
+          is_active: true
+        };
+
+        try {
+          const url = userId ? `/api/v1/admin/users/${userId}` : '/api/v1/admin/users';
+          const method = userId ? 'PUT' : 'POST';
+          const headers = { 'Content-Type': 'application/json' };
+          if (currentUser && currentUser.token) {
+            headers['Authorization'] = `Bearer ${currentUser.token}`;
+          }
+          const resp = await fetch(url, {
+            method,
+            headers,
+            body: JSON.stringify(payload)
+          });
+          if (resp.ok) {
+            showToast(`✅ Saved officer account: ${fullName}`);
+            toggleEditor(false);
+            loadAdminUsers();
+          } else {
+            const err = await resp.json();
+            showToast(`❌ Error saving user: ${err.detail || 'Failed'}`);
+          }
+        } catch (err) {
+          showToast(`❌ Network error: ${err.message}`);
+        }
+      });
+    }
+
+    // Master ICS Download Button
+    const btnDownloadMaster = document.getElementById('btn-download-master-ics');
+    if (btnDownloadMaster) {
+      btnDownloadMaster.addEventListener('click', async () => {
+        const landscape = document.getElementById('ics-filter-landscape')?.value || '';
+        const village = document.getElementById('ics-filter-village')?.value.trim() || '';
+        const season = document.getElementById('ics-filter-season')?.value || '2026';
+        const phase = document.getElementById('ics-filter-phase')?.value || '';
+
+        const params = new URLSearchParams();
+        if (landscape) params.set('landscape_name', landscape);
+        if (village) params.set('village_name', village);
+        params.set('season_code', season);
+        if (phase) params.set('phase', phase);
+
+        showToast('📥 Preparing master ICS CSV dataset...');
+        try {
+          const headers = currentUser && currentUser.token ? { 'Authorization': `Bearer ${currentUser.token}` } : {};
+          const resp = await fetch(`/api/v1/inspections/export/master-ics-csv?${params.toString()}`, { headers });
+          if (resp.ok) {
+            const blob = await resp.blob();
+            const filename = `ibis_master_ics_${(landscape || 'Nationwide').replace(/\s+/g, '_')}_${season}_${new Date().toISOString().slice(0, 10)}.csv`;
+            downloadBlob(blob, filename, 'text/csv');
+            showToast('✅ Master ICS CSV downloaded successfully');
+          } else {
+            const err = await resp.json().catch(() => ({}));
+            showToast(`❌ Failed to download CSV: ${err.detail || 'Admin privileges required'}`);
+          }
+        } catch (err) {
+          showToast(`❌ Download error: ${err.message}`);
+        }
+      });
+    }
+  }
+
+  async function loadAdminTerritories() {
+    const grid = document.getElementById('territory-landscapes-grid');
+    if (!grid) return;
+    try {
+      const headers = currentUser && currentUser.token ? { 'Authorization': `Bearer ${currentUser.token}` } : {};
+      const resp = await fetch('/api/v1/admin/territories', { headers });
+      if (resp.ok) {
+        const data = await resp.json();
+        allAdminTerritories = data.landscapes || [];
+        grid.innerHTML = '';
+        allAdminTerritories.forEach(l => {
+          const lbl = document.createElement('label');
+          lbl.className = 'territory-checkbox-item';
+          lbl.innerHTML = `<input type="checkbox" class="territory-landscape-checkbox" value="${escapeHtml(l.name)}" /> <span>${escapeHtml(l.name)} (${l.villages.length} vills)</span>`;
+          grid.appendChild(lbl);
+        });
+      }
+    } catch (e) {
+      grid.innerHTML = '';
+      ['Keo Seima', 'Preah Vihear', 'Siem Pang', 'Prey Lang', 'Lumphat', 'Vuen Sai'].forEach(name => {
+        const lbl = document.createElement('label');
+        lbl.className = 'territory-checkbox-item';
+        lbl.innerHTML = `<input type="checkbox" class="territory-landscape-checkbox" value="${name}" /> <span>${name}</span>`;
+        grid.appendChild(lbl);
+      });
+    }
+  }
+
+  async function loadAdminUsers() {
+    const tbody = document.getElementById('admin-users-table-body');
+    if (!tbody) return;
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #94a3b8; padding: 16px;">Loading registered officers...</td></tr>';
+    try {
+      const headers = currentUser && currentUser.token ? { 'Authorization': `Bearer ${currentUser.token}` } : {};
+      const resp = await fetch('/api/v1/admin/users', { headers });
+      if (resp.ok) {
+        const users = await resp.json();
+        tbody.innerHTML = '';
+        if (users.length === 0) {
+          tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #94a3b8; padding: 16px;">No users registered yet.</td></tr>';
+          return;
+        }
+        users.forEach(u => {
+          const tr = document.createElement('tr');
+          const roleLabel = u.role === 'admin' ? 'Administrator' : (u.role === 'supervisor' ? 'Supervisor' : 'Field Inspector');
+          const terrLabel = (u.assigned_landscapes && u.assigned_landscapes.length > 0)
+            ? u.assigned_landscapes.join(', ')
+            : 'Nationwide (All)';
+
+          tr.innerHTML = `
+            <td><strong>${escapeHtml(u.full_name)}</strong></td>
+            <td><span class="user-role-badge role-badge-${u.role}">${escapeHtml(roleLabel)}</span></td>
+            <td><span style="font-size: 0.78rem; opacity: 0.85;">${escapeHtml(u.phone || u.email || 'N/A')}</span></td>
+            <td><code style="background: rgba(0,0,0,0.3); padding: 2px 5px; border-radius: 3px; font-weight: bold; color: #facc15;">${escapeHtml(u.pin || '1234')}</code></td>
+            <td><span style="font-size: 0.8rem; color: #34d399;">📍 ${escapeHtml(terrLabel)}</span></td>
+            <td><span class="user-status-pill ${u.is_active ? 'status-active' : 'status-inactive'}">${u.is_active ? 'Active' : 'Inactive'}</span></td>
+            <td>
+              <div class="admin-row-actions">
+                <button type="button" class="table-btn table-btn-edit" data-user-id="${u.id}">Edit</button>
+              </div>
+            </td>
+          `;
+
+          const editBtn = tr.querySelector('.table-btn-edit');
+          if (editBtn) {
+            editBtn.addEventListener('click', () => {
+              const editorCard = document.getElementById('admin-user-editor-card');
+              if (editorCard) {
+                editorCard.style.display = 'block';
+                const title = document.getElementById('editor-user-title');
+                const idInput = document.getElementById('admin-user-id');
+                const nameInput = document.getElementById('admin-user-name');
+                const emailInput = document.getElementById('admin-user-email');
+                const phoneInput = document.getElementById('admin-user-phone');
+                const roleInput = document.getElementById('admin-user-role');
+                const pinInput = document.getElementById('admin-user-pin');
+
+                if (title) title.textContent = `Edit Inspector: ${u.full_name}`;
+                if (idInput) idInput.value = u.id;
+                if (nameInput) nameInput.value = u.full_name || '';
+                if (emailInput) emailInput.value = u.email || '';
+                if (phoneInput) phoneInput.value = u.phone || '';
+                if (roleInput) roleInput.value = u.role || 'inspector';
+                if (pinInput) pinInput.value = u.pin || '1234';
+
+                const assignedLands = u.assigned_landscapes || [];
+                document.querySelectorAll('.territory-landscape-checkbox').forEach(cb => {
+                  cb.checked = assignedLands.includes(cb.value);
+                });
+                editorCard.scrollIntoView({ behavior: 'smooth' });
+              }
+            });
+          }
+
+          tbody.appendChild(tr);
+        });
+      }
+    } catch (e) {
+      tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: #f87171; padding: 16px;">Error loading users: ${escapeHtml(e.message)}</td></tr>`;
+    }
+  }
+
+  // Initialize Hero Card, Admin Workspace & Auth on app start
+  initHeroDiscoveryCard();
+  initAdminWorkspace();
+  initAuthSession();
+
 })();
+
+
+
 

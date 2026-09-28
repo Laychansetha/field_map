@@ -1843,7 +1843,12 @@
             <p class="modal-subtitle">Manage field inspector accounts, landscape territory assignments, and batch ICS audit exports</p>
           </div>
         </div>
-        <button type="button" id="btn-close-admin-workspace" class="modal-close-btn">&times;</button>
+        <button type="button" id="btn-close-admin-workspace" class="modal-close-btn" title="Close Workspace" aria-label="Close">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
       </div>
 
       <div class="admin-workspace-nav" role="tablist">
@@ -1912,10 +1917,16 @@
 
               <!-- Landscape & Village Assignment -->
               <div class="form-group territory-picker-group">
-                <label>Assigned Conservation Landscapes &amp; Protected Areas *</label>
-                <div class="territory-selection-grid" id="territory-landscapes-grid">
-                  <!-- Dynamically populated landscape checkboxes -->
-                </div>
+                <label for="admin-user-landscapes">Assigned Conservation Landscapes &amp; Protected Areas *</label>
+                <select id="admin-user-landscapes" class="territory-multiselect" multiple title="Select Assigned Landscapes">
+                  <option value="Preah Vihear">Preah Vihear Protected Landscape</option>
+                  <option value="Preay Lang">Preay Lang Wildlife Sanctuary</option>
+                  <option value="Siem Pang">Siem Pang Wildlife Sanctuary</option>
+                  <option value="Veun Sai">Veun Sai National Park</option>
+                  <option value="Lumphat">Lumphat Wildlife Sanctuary</option>
+                  <option value="Keo Seima">Keo Seima Wildlife Sanctuary</option>
+                </select>
+                <span class="territory-select-hint">💡 Hold Ctrl (or Cmd on Mac) to select multiple landscapes.</span>
               </div>
 
               <div class="modal-footer" style="padding-top: 10px;">

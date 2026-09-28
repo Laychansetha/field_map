@@ -5491,6 +5491,12 @@
         sidebarSeasonIndicator.textContent = currentSeason;
       }
 
+      // Sync Current Plot dock in sidebar with selectedPlot state
+      const sidebarSelectedPlotBox = document.getElementById('sidebar-selected-plot-box');
+      if (sidebarSelectedPlotBox) {
+        sidebarSelectedPlotBox.style.display = selectedPlot ? 'block' : 'none';
+      }
+
       // Show inspection editor tabs
       if (drawerTabBar) drawerTabBar.style.display = 'flex';
       if (drawerScrollBody) drawerScrollBody.style.display = 'block';
@@ -5520,33 +5526,29 @@
     if (authPinInput) authPinInput.value = '';
     if (authPasswordInput) authPasswordInput.value = '';
 
-    if (!userObj) {
-      // Complete clean reset on sign out
-      if (plotDrawer) plotDrawer.classList.add('closed');
-      const modalAdminWorkspace = document.getElementById('modal-admin-workspace');
-      if (modalAdminWorkspace) modalAdminWorkspace.style.display = 'none';
-      const modalAdminGis = document.getElementById('modal-admin-gis');
-      if (modalAdminGis) modalAdminGis.style.display = 'none';
+    // ALWAYS start with a clean, unselected plot state on login / user change
+    if (plotDrawer) plotDrawer.classList.add('closed');
+    const modalAdminWorkspace = document.getElementById('modal-admin-workspace');
+    if (modalAdminWorkspace) modalAdminWorkspace.style.display = 'none';
+    const modalAdminGis = document.getElementById('modal-admin-gis');
+    if (modalAdminGis) modalAdminGis.style.display = 'none';
 
-      // Cancel drawing session if active
-      if (isDrawingSubplot) {
-        cancelSubplotDrawing();
-      }
-
-      // Unselect active plot & clear highlights
-      if (selectedLayer) {
-        selectedLayer = null;
-      }
-      selectedPlot = null;
-      resetAllInspectionForms();
+    // Cancel drawing session if active
+    if (isDrawingSubplot) {
+      cancelSubplotDrawing();
     }
+
+    // Unselect active plot & clear highlights
+    selectedLayer = null;
+    selectedPlot = null;
+    resetAllInspectionForms();
+
+    // Hide sidebar Current Plot dock on login
+    const sidebarSelectedPlotBox = document.getElementById('sidebar-selected-plot-box');
+    if (sidebarSelectedPlotBox) sidebarSelectedPlotBox.style.display = 'none';
 
     applyUserTerritoryFilter();
     updateAuthUI();
-
-    if (selectedPlot && userObj) {
-      selectPlot(selectedPlot, false);
-    }
   }
 
   // --- Auth Modal & Handlers ---
@@ -6068,7 +6070,28 @@
   }
 
   // --- Admin Workspace & Inspector Territory Management ---
-  let allAdminTerritories = [];
+  const LOCAL_ADMIN_USERS_KEY = 'ibis_admin_users_v2';
+  const DEFAULT_ADMIN_USERS = [
+    { id: 'u-admin-1', full_name: 'IRCC System Administrator', role: 'admin', email: 'admin@ibisrice.com', phone: '', pin: '9999', assigned_landscapes: [], is_active: true },
+    { id: 'u-insp-1', full_name: 'Inspector Sok Chea', role: 'inspector', email: 'inspector@ibisrice.com', phone: '', pin: '1234', assigned_landscapes: ['Keo Seima'], is_active: true },
+    { id: 'u-insp-2', full_name: 'Inspector Test Officer', role: 'inspector', email: '', phone: '', pin: '5678', assigned_landscapes: ['Keo Seima', 'Siem Pang'], is_active: true },
+    { id: 'u-insp-3', full_name: 'Officer Vanna Roth', role: 'inspector', email: '', phone: '012999888', pin: '7788', assigned_landscapes: ['Siem Pang'], is_active: true }
+  ];
+
+  function getStoredLocalUsers() {
+    try {
+      const raw = localStorage.getItem(LOCAL_ADMIN_USERS_KEY);
+      if (raw) return JSON.parse(raw);
+    } catch (e) {}
+    localStorage.setItem(LOCAL_ADMIN_USERS_KEY, JSON.stringify(DEFAULT_ADMIN_USERS));
+    return DEFAULT_ADMIN_USERS;
+  }
+
+  function saveStoredLocalUsers(usersList) {
+    try {
+      localStorage.setItem(LOCAL_ADMIN_USERS_KEY, JSON.stringify(usersList));
+    } catch (e) {}
+  }
 
   function initAdminWorkspace() {
     const modalAdmin = document.getElementById('modal-admin-workspace');
@@ -6079,7 +6102,6 @@
       btnOpenAdmin.addEventListener('click', () => {
         if (modalAdmin) modalAdmin.style.display = 'flex';
         loadAdminUsers();
-        loadAdminTerritories();
       });
     }
 
@@ -6123,7 +6145,7 @@
       });
     }
 
-    // Add Inspector Form Toggle
+    // Add / Edit Inspector Form Toggle
     const editorCard = document.getElementById('admin-user-editor-card');
     const btnOpenAdd = document.getElementById('btn-open-add-user-modal');
     const btnCancelEditor = document.getElementById('btn-cancel-user-editor');
@@ -6140,6 +6162,7 @@
         const phoneInput = document.getElementById('admin-user-phone');
         const roleInput = document.getElementById('admin-user-role');
         const pinInput = document.getElementById('admin-user-pin');
+        const selectEl = document.getElementById('admin-user-landscapes');
 
         if (user) {
           if (title) title.textContent = `Edit Inspector: ${user.full_name}`;
@@ -6151,9 +6174,11 @@
           if (pinInput) pinInput.value = user.pin || '1234';
 
           const assignedLands = user.assigned_landscapes || [];
-          document.querySelectorAll('.territory-landscape-checkbox').forEach(cb => {
-            cb.checked = assignedLands.includes(cb.value);
-          });
+          if (selectEl) {
+            Array.from(selectEl.options).forEach(opt => {
+              opt.selected = assignedLands.includes(opt.value);
+            });
+          }
         } else {
           if (title) title.textContent = 'Add New Field Inspector';
           if (idInput) idInput.value = '';
@@ -6162,9 +6187,11 @@
           if (phoneInput) phoneInput.value = '';
           if (roleInput) roleInput.value = 'inspector';
           if (pinInput) pinInput.value = '1234';
-          document.querySelectorAll('.territory-landscape-checkbox').forEach(cb => {
-            cb.checked = false;
-          });
+          if (selectEl) {
+            Array.from(selectEl.options).forEach(opt => {
+              opt.selected = false;
+            });
+          }
         }
       }
     };
@@ -6186,9 +6213,12 @@
         const pin = document.getElementById('admin-user-pin')?.value.trim();
 
         const selectedLands = [];
-        document.querySelectorAll('.territory-landscape-checkbox:checked').forEach(cb => {
-          selectedLands.push(cb.value);
-        });
+        const selectEl = document.getElementById('admin-user-landscapes');
+        if (selectEl) {
+          Array.from(selectEl.selectedOptions).forEach(opt => {
+            selectedLands.push(opt.value);
+          });
+        }
 
         if (!fullName) {
           showToast('Please enter inspector name');
@@ -6206,6 +6236,8 @@
           is_active: true
         };
 
+        let savedUser = null;
+
         try {
           const url = userId ? `/api/v1/admin/users/${userId}` : '/api/v1/admin/users';
           const method = userId ? 'PUT' : 'POST';
@@ -6219,16 +6251,30 @@
             body: JSON.stringify(payload)
           });
           if (resp.ok) {
-            showToast(`✅ Saved officer account: ${fullName}`);
-            toggleEditor(false);
-            loadAdminUsers();
-          } else {
-            const err = await resp.json();
-            showToast(`❌ Error saving user: ${err.detail || 'Failed'}`);
+            savedUser = await resp.json();
           }
-        } catch (err) {
-          showToast(`❌ Network error: ${err.message}`);
+        } catch (err) {}
+
+        // Local storage sync for seamless offline / static operation
+        const localUsers = getStoredLocalUsers();
+        const targetId = userId || (savedUser ? savedUser.id : `u-${Date.now()}`);
+        const userRecord = { ...payload, id: targetId };
+
+        if (userId) {
+          const idx = localUsers.findIndex(u => String(u.id) === String(userId));
+          if (idx !== -1) {
+            localUsers[idx] = userRecord;
+          } else {
+            localUsers.push(userRecord);
+          }
+        } else {
+          localUsers.push(userRecord);
         }
+        saveStoredLocalUsers(localUsers);
+
+        showToast(`✅ Saved officer account: ${fullName}`);
+        toggleEditor(false);
+        loadAdminUsers();
       });
     }
 
@@ -6267,106 +6313,122 @@
     }
   }
 
-  async function loadAdminTerritories() {
-    const grid = document.getElementById('territory-landscapes-grid');
-    if (!grid) return;
-    try {
-      const headers = currentUser && currentUser.token ? { 'Authorization': `Bearer ${currentUser.token}` } : {};
-      const resp = await fetch('/api/v1/admin/territories', { headers });
-      if (resp.ok) {
-        const data = await resp.json();
-        allAdminTerritories = data.landscapes || [];
-        grid.innerHTML = '';
-        allAdminTerritories.forEach(l => {
-          const lbl = document.createElement('label');
-          lbl.className = 'territory-checkbox-item';
-          lbl.innerHTML = `<input type="checkbox" class="territory-landscape-checkbox" value="${escapeHtml(l.name)}" /> <span>${escapeHtml(l.name)} (${l.villages.length} vills)</span>`;
-          grid.appendChild(lbl);
-        });
-      }
-    } catch (e) {
-      grid.innerHTML = '';
-      ['Keo Seima', 'Preah Vihear', 'Siem Pang', 'Prey Lang', 'Lumphat', 'Vuen Sai'].forEach(name => {
-        const lbl = document.createElement('label');
-        lbl.className = 'territory-checkbox-item';
-        lbl.innerHTML = `<input type="checkbox" class="territory-landscape-checkbox" value="${name}" /> <span>${name}</span>`;
-        grid.appendChild(lbl);
-      });
+  async function deleteAdminUser(userId, userName) {
+    if (!confirm(`Are you sure you want to delete inspector "${userName}"?\nThis account will be removed.`)) {
+      return;
     }
+
+    try {
+      const headers = { 'Content-Type': 'application/json' };
+      if (currentUser && currentUser.token) {
+        headers['Authorization'] = `Bearer ${currentUser.token}`;
+      }
+      await fetch(`/api/v1/admin/users/${userId}`, {
+        method: 'DELETE',
+        headers
+      });
+    } catch (err) {}
+
+    // Synchronize local storage
+    const localUsers = getStoredLocalUsers().filter(u => String(u.id) !== String(userId));
+    saveStoredLocalUsers(localUsers);
+
+    showToast(`🗑️ Deleted officer account: ${userName}`);
+    loadAdminUsers();
   }
 
   async function loadAdminUsers() {
     const tbody = document.getElementById('admin-users-table-body');
     if (!tbody) return;
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #94a3b8; padding: 16px;">Loading registered officers...</td></tr>';
+
+    let users = [];
+
     try {
       const headers = currentUser && currentUser.token ? { 'Authorization': `Bearer ${currentUser.token}` } : {};
       const resp = await fetch('/api/v1/admin/users', { headers });
       if (resp.ok) {
-        const users = await resp.json();
-        tbody.innerHTML = '';
-        if (users.length === 0) {
-          tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #94a3b8; padding: 16px;">No users registered yet.</td></tr>';
-          return;
-        }
-        users.forEach(u => {
-          const tr = document.createElement('tr');
-          const roleLabel = u.role === 'admin' ? 'Administrator' : (u.role === 'supervisor' ? 'Supervisor' : 'Field Inspector');
-          const terrLabel = (u.assigned_landscapes && u.assigned_landscapes.length > 0)
-            ? u.assigned_landscapes.join(', ')
-            : 'Nationwide (All)';
-
-          tr.innerHTML = `
-            <td><strong>${escapeHtml(u.full_name)}</strong></td>
-            <td><span class="user-role-badge role-badge-${u.role}">${escapeHtml(roleLabel)}</span></td>
-            <td><span style="font-size: 0.78rem; opacity: 0.85;">${escapeHtml(u.phone || u.email || 'N/A')}</span></td>
-            <td><code style="background: rgba(0,0,0,0.3); padding: 2px 5px; border-radius: 3px; font-weight: bold; color: #facc15;">${escapeHtml(u.pin || '1234')}</code></td>
-            <td><span style="font-size: 0.8rem; color: #34d399;">📍 ${escapeHtml(terrLabel)}</span></td>
-            <td><span class="user-status-pill ${u.is_active ? 'status-active' : 'status-inactive'}">${u.is_active ? 'Active' : 'Inactive'}</span></td>
-            <td>
-              <div class="admin-row-actions">
-                <button type="button" class="table-btn table-btn-edit" data-user-id="${u.id}">Edit</button>
-              </div>
-            </td>
-          `;
-
-          const editBtn = tr.querySelector('.table-btn-edit');
-          if (editBtn) {
-            editBtn.addEventListener('click', () => {
-              const editorCard = document.getElementById('admin-user-editor-card');
-              if (editorCard) {
-                editorCard.style.display = 'block';
-                const title = document.getElementById('editor-user-title');
-                const idInput = document.getElementById('admin-user-id');
-                const nameInput = document.getElementById('admin-user-name');
-                const emailInput = document.getElementById('admin-user-email');
-                const phoneInput = document.getElementById('admin-user-phone');
-                const roleInput = document.getElementById('admin-user-role');
-                const pinInput = document.getElementById('admin-user-pin');
-
-                if (title) title.textContent = `Edit Inspector: ${u.full_name}`;
-                if (idInput) idInput.value = u.id;
-                if (nameInput) nameInput.value = u.full_name || '';
-                if (emailInput) emailInput.value = u.email || '';
-                if (phoneInput) phoneInput.value = u.phone || '';
-                if (roleInput) roleInput.value = u.role || 'inspector';
-                if (pinInput) pinInput.value = u.pin || '1234';
-
-                const assignedLands = u.assigned_landscapes || [];
-                document.querySelectorAll('.territory-landscape-checkbox').forEach(cb => {
-                  cb.checked = assignedLands.includes(cb.value);
-                });
-                editorCard.scrollIntoView({ behavior: 'smooth' });
-              }
-            });
-          }
-
-          tbody.appendChild(tr);
-        });
+        users = await resp.json();
+        saveStoredLocalUsers(users);
+      } else {
+        users = getStoredLocalUsers();
       }
     } catch (e) {
-      tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: #f87171; padding: 16px;">Error loading users: ${escapeHtml(e.message)}</td></tr>`;
+      users = getStoredLocalUsers();
     }
+
+    tbody.innerHTML = '';
+    if (!users || users.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #94a3b8; padding: 16px;">No users registered yet.</td></tr>';
+      return;
+    }
+
+    users.forEach(u => {
+      const tr = document.createElement('tr');
+      const roleLabel = u.role === 'admin' ? 'ADMINISTRATOR' : (u.role === 'supervisor' ? 'FIELD SUPERVISOR' : 'FIELD INSPECTOR');
+      const terrLabel = (u.assigned_landscapes && u.assigned_landscapes.length > 0)
+        ? u.assigned_landscapes.join(', ')
+        : 'Nationwide (All)';
+
+      const contactLabel = u.phone || u.email || 'N/A';
+
+      tr.innerHTML = `
+        <td><strong>${escapeHtml(u.full_name)}</strong></td>
+        <td><span class="user-role-badge role-badge-${u.role}">${escapeHtml(roleLabel)}</span></td>
+        <td><span style="font-size: 0.78rem; opacity: 0.85;">${escapeHtml(contactLabel)}</span></td>
+        <td><code style="background: rgba(0,0,0,0.3); padding: 2px 6px; border-radius: 4px; font-weight: bold; color: #facc15;">${escapeHtml(u.pin || '1234')}</code></td>
+        <td><span style="font-size: 0.8rem; color: #34d399;">📍 ${escapeHtml(terrLabel)}</span></td>
+        <td><span class="user-status-pill ${u.is_active ? 'status-active' : 'status-inactive'}">${u.is_active ? 'Active' : 'Inactive'}</span></td>
+        <td>
+          <div class="admin-row-actions">
+            <button type="button" class="table-btn table-btn-edit" data-user-id="${u.id}">Edit</button>
+            <button type="button" class="table-btn table-btn-delete" data-user-id="${u.id}">Delete</button>
+          </div>
+        </td>
+      `;
+
+      const editBtn = tr.querySelector('.table-btn-edit');
+      if (editBtn) {
+        editBtn.addEventListener('click', () => {
+          const editorCard = document.getElementById('admin-user-editor-card');
+          if (editorCard) {
+            editorCard.style.display = 'block';
+            const title = document.getElementById('editor-user-title');
+            const idInput = document.getElementById('admin-user-id');
+            const nameInput = document.getElementById('admin-user-name');
+            const emailInput = document.getElementById('admin-user-email');
+            const phoneInput = document.getElementById('admin-user-phone');
+            const roleInput = document.getElementById('admin-user-role');
+            const pinInput = document.getElementById('admin-user-pin');
+            const selectEl = document.getElementById('admin-user-landscapes');
+
+            if (title) title.textContent = `Edit Inspector: ${u.full_name}`;
+            if (idInput) idInput.value = u.id;
+            if (nameInput) nameInput.value = u.full_name || '';
+            if (emailInput) emailInput.value = u.email || '';
+            if (phoneInput) phoneInput.value = u.phone || '';
+            if (roleInput) roleInput.value = u.role || 'inspector';
+            if (pinInput) pinInput.value = u.pin || '1234';
+
+            const assignedLands = u.assigned_landscapes || [];
+            if (selectEl) {
+              Array.from(selectEl.options).forEach(opt => {
+                opt.selected = assignedLands.includes(opt.value);
+              });
+            }
+            editorCard.scrollIntoView({ behavior: 'smooth' });
+          }
+        });
+      }
+
+      const deleteBtn = tr.querySelector('.table-btn-delete');
+      if (deleteBtn) {
+        deleteBtn.addEventListener('click', () => {
+          deleteAdminUser(u.id, u.full_name);
+        });
+      }
+
+      tbody.appendChild(tr);
+    });
   }
 
   // Initialize Hero Card, Admin Workspace & Auth on app start

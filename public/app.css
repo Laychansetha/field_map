@@ -886,13 +886,13 @@ body.role-admin .filter-panel {
 .drawer-alloc-tracker {
   background: rgba(0, 0, 0, 0.22);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: var(--radius-md);
-  padding: 8px 12px;
-  margin-top: 10px;
-  margin-bottom: 4px;
+  border-radius: var(--radius-sm);
+  padding: 4px 8px;
+  margin-top: 4px;
+  margin-bottom: 2px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 3px;
 }
 
 .tracker-header {
@@ -1498,9 +1498,9 @@ body.role-admin .filter-panel {
 .subplots-section {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 6px;
   background: rgba(0, 0, 0, 0.25);
-  padding: 12px 14px;
+  padding: 8px 10px;
   border-radius: var(--radius-md);
   border: 1px solid rgba(255, 255, 255, 0.08);
 }
@@ -1512,7 +1512,7 @@ body.role-admin .filter-panel {
 }
 
 .section-eyebrow {
-  font-size: 0.68rem;
+  font-size: 0.64rem;
   font-weight: 700;
   color: var(--brand-gold);
   letter-spacing: 0.05em;
@@ -1521,11 +1521,11 @@ body.role-admin .filter-panel {
 .title-with-count {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
 }
 
 .title-with-count h3 {
-  font-size: 1.02rem;
+  font-size: 0.95rem;
   color: #fff;
   font-weight: 700;
 }
@@ -1534,20 +1534,20 @@ body.role-admin .filter-panel {
   background: rgba(0, 240, 255, 0.15);
   color: #00f0ff;
   border: 1px solid rgba(0, 240, 255, 0.3);
-  font-size: 0.72rem;
+  font-size: 0.70rem;
 }
 
 .draw-subplot-btn {
   background: linear-gradient(135deg, #00d2ff, #00a8cc);
   color: #07221b;
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   font-weight: 700;
-  height: 34px;
-  padding: 0 12px;
+  height: 30px;
+  padding: 0 10px;
   border-radius: var(--radius-sm);
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 5px;
   border: none;
   cursor: pointer;
   box-shadow: 0 3px 10px rgba(0, 210, 255, 0.25);
@@ -1561,8 +1561,9 @@ body.role-admin .filter-panel {
 .subplots-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  max-height: 165px;
+  gap: 4px;
+  max-height: 340px;
+  min-height: 180px;
   overflow-y: auto;
   padding-right: 4px;
 }
@@ -1594,11 +1595,41 @@ body.role-admin .filter-panel {
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-left: 4px solid #00f0ff;
   border-radius: var(--radius-sm);
-  padding: 8px 10px;
+  padding: 4px 8px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  gap: 10px;
+  gap: 6px;
+  min-height: 32px;
+}
+
+.subplot-card-item:hover {
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.subplot-card-content-inline {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+
+.subplot-area-pill {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.subplot-area-pill b {
+  color: #ffffff;
+}
+
+.subplot-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
 }
 
 .subplot-card-item:hover {
@@ -2653,6 +2684,34 @@ body.role-admin .filter-panel {
   box-shadow: 0 0 0 3px rgba(0, 240, 255, 0.18);
 }
 
+/* Completed Field Visual Highlight */
+.form-group input.field-completed,
+.form-group select.field-completed,
+.form-group textarea.field-completed,
+.drawer-tab-panel input.field-completed,
+.drawer-tab-panel select.field-completed,
+.drawer-tab-panel textarea.field-completed,
+.modal-content input.field-completed,
+.modal-content select.field-completed,
+.modal-content textarea.field-completed,
+input.field-completed,
+select.field-completed,
+textarea.field-completed {
+  border-color: rgba(34, 197, 94, 0.45) !important;
+  background-color: rgba(16, 185, 129, 0.08) !important;
+  box-shadow: 0 0 0 1px rgba(34, 197, 94, 0.15) !important;
+}
+
+.form-group input.field-completed:focus,
+.form-group select.field-completed:focus,
+.form-group textarea.field-completed:focus,
+input.field-completed:focus,
+select.field-completed:focus,
+textarea.field-completed:focus {
+  border-color: #00f0ff !important;
+  box-shadow: 0 0 0 3px rgba(0, 240, 255, 0.22) !important;
+}
+
 /* Conditional Block animation */
 .conditional-block {
   animation: fadeInDown 0.22s cubic-bezier(0.16, 1, 0.3, 1);
@@ -3087,44 +3146,50 @@ body.role-admin .filter-panel {
 
 /* Parcel Harvest Summary Card */
 .parcel-harvest-summary {
-  margin-top: 12px;
-  padding: 10px 12px;
+  margin-top: 6px;
+  padding: 6px 8px;
   background: rgba(228, 168, 52, 0.08);
   border: 1px solid rgba(228, 168, 52, 0.25);
   border-radius: var(--radius-sm);
 }
 
 .summary-title {
-  font-size: 0.75rem;
+  font-size: 0.70rem;
   font-weight: 800;
   color: #facc15;
-  margin-bottom: 6px;
+  margin-bottom: 4px;
   letter-spacing: 0.03em;
 }
 
 .summary-metrics-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(85px, 1fr));
-  gap: 6px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 4px;
 }
 
 .summary-metric-item {
   display: flex;
   flex-direction: column;
-  background: rgba(0, 0, 0, 0.3);
-  padding: 4px 6px;
+  background: rgba(0, 0, 0, 0.35);
+  padding: 3px 4px;
   border-radius: 4px;
+  text-align: center;
+  min-width: 0;
 }
 
 .sm-label {
-  font-size: 0.65rem;
+  font-size: 0.60rem;
   color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .sm-val {
-  font-size: 0.8rem;
+  font-size: 0.76rem;
   font-weight: 700;
   color: #fff;
+  white-space: nowrap;
 }
 
 .sm-val.highlight {

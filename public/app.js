@@ -129,7 +129,7 @@
   const subplotVariety = document.getElementById('subplot-variety');
   const customVarietyGroup = document.getElementById('custom-variety-group');
   const subplotCustomVariety = document.getElementById('subplot-custom-variety');
-  const subplotNotes = document.getElementById('subplot-notes');
+  const pInspectionNotes = document.getElementById('p-inspection-notes');
 
   // Subplot Harvest Modal Elements
   const subplotHarvestModal = document.getElementById('subplot-harvest-modal');
@@ -787,6 +787,12 @@
           if (p && p.id !== undefined) {
             plotLayersById.set(p.id, layer);
             renderedIds.add(p.id);
+            if (selectedPlot && isSelectedPlot(p)) {
+              selectedLayer = layer;
+              setTimeout(() => {
+                try { layer.bringToFront(); } catch(e) {}
+              }, 10);
+            }
           }
 
           // Click on plot polygon
@@ -849,6 +855,7 @@
     const bounds = map.getBounds().pad(0.5); // 50% buffer around viewport
 
     const visibleFeatures = allFeatures.filter(f => {
+      if (selectedPlot && f.properties && isSelectedPlot(f.properties)) return true;
       const bbox = f.properties && f.properties.bbox;
       if (!bbox) return true; // Include if no bbox
       // bbox stored as [minLat, minLng, maxLat, maxLng]
@@ -904,130 +911,58 @@
 
   // --- Plot Selection & Drawer Display ---
   function selectPlot(plotProps, shouldFly = true) {
+    if (!plotProps) return;
     selectedPlot = plotProps;
     if (map) map.closePopup();
-    renderAllStoredSubplotsOnMap();
 
-    // Reset previous layer highlight
-    if (selectedLayer) {
-      try {
-        selectedLayer.setStyle({
-          color: '#E4A834',
-          weight: 1.5,
-          fillColor: '#22c55e',
-          fillOpacity: 0.35
-        });
-      } catch(e) { /* layer may have been removed */ }
-      selectedLayer = null;
-    }
+    // 1. Immediately open plot drawer
+    if (plotDrawer) plotDrawer.classList.remove('closed');
+    if (drawerEmptyState) drawerEmptyState.style.display = 'none';
+    if (drawerPlotInfo) drawerPlotInfo.style.display = 'flex';
 
-    // Helper to apply highlight to a layer
-    function highlightLayer(lyr) {
-      selectedLayer = lyr;
-      selectedLayer.setStyle({
-        color: '#00f0ff',
-        weight: 3.5,
-        fillColor: '#ffdd00',
-        fillOpacity: 0.65
-      });
-      selectedLayer.bringToFront();
-    }
+    // 2. Safe coordinate & metadata strings
+    const latVal = (plotProps.lat !== undefined && plotProps.lat !== null) ? Number(plotProps.lat) : null;
+    const lngVal = (plotProps.lng !== undefined && plotProps.lng !== null) ? Number(plotProps.lng) : null;
+    const coordsStr = (latVal !== null && lngVal !== null && !isNaN(latVal) && !isNaN(lngVal))
+      ? `${latVal.toFixed(5)}, ${lngVal.toFixed(5)}`
+      : 'N/A';
 
-    // Try to highlight existing layer and zoom closely to the plot
-    const existingLayer = plotLayersById.get(plotProps.id);
-    const paddingOptions = window.innerWidth >= 768
-      ? { paddingTopLeft: [480, 50], paddingBottomRight: [50, 50] }
-      : { paddingTopLeft: [20, 20], paddingBottomRight: [20, 20] };
+    if (cardSite) cardSite.textContent = `${plotProps.site || ''} · ${plotProps.commune || 'Cambodia'}`;
+    if (cardFamily) cardFamily.textContent = plotProps.family_id || '';
+    if (cardPlot) cardPlot.textContent = plotProps.plot_id || '';
+    if (cardArea) cardArea.textContent = plotProps.area_ha ? Number(plotProps.area_ha).toFixed(2) : '0.00';
+    if (cardVillage) cardVillage.textContent = plotProps.village || '';
+    if (cardCommune) cardCommune.textContent = plotProps.commune || 'N/A';
+    if (cardYear) cardYear.textContent = plotProps.year_join || 'N/A';
+    if (cardCoords) cardCoords.textContent = coordsStr;
 
-    if (existingLayer) {
-      highlightLayer(existingLayer);
-      if (shouldFly) {
-        if (existingLayer.getBounds && typeof existingLayer.getBounds === 'function') {
-          map.flyToBounds(existingLayer.getBounds(), {
-            maxZoom: 18,
-            duration: 1.3,
-            ...paddingOptions
-          });
-        } else if (plotProps.lat && plotProps.lng) {
-          map.flyTo([plotProps.lat, plotProps.lng], 18, { duration: 1.3 });
-        }
-      }
-    } else if (shouldFly && plotProps.lat && plotProps.lng) {
-      // Plot layer not yet rendered - calculate bounds from allFeatures if available
-      const feature = allFeatures.find(f => f.properties && f.properties.id === plotProps.id);
-      let targetBounds = null;
-      if (feature) {
-        try {
-          targetBounds = L.geoJSON(feature).getBounds();
-        } catch (err) {
-          targetBounds = null;
-        }
-      }
-
-      if (targetBounds && targetBounds.isValid && targetBounds.isValid()) {
-        map.flyToBounds(targetBounds, {
-          maxZoom: 18,
-          duration: 1.3,
-          ...paddingOptions
-        });
-      } else {
-        map.flyTo([plotProps.lat, plotProps.lng], 18, { duration: 1.3 });
-      }
-
-      // After flying, ensure the plot is rendered and highlighted
-      const onMoveEnd = () => {
-        map.off('moveend', onMoveEnd);
-        // Ensure this plot's feature is in the rendered layer
-        const feat = allFeatures.find(f => f.properties && f.properties.id === plotProps.id);
-        if (feat && !plotLayersById.has(plotProps.id)) {
-          const singleFeature = { type: 'FeatureCollection', features: [feat] };
-          try {
-            const tmpLayer = L.geoJSON(singleFeature, {
-              style: () => ({
-                color: '#00f0ff',
-                weight: 3.5,
-                fillColor: '#ffdd00',
-                fillOpacity: 0.65,
-                smoothFactor: 1.5
-              })
-            }).addTo(map);
-            selectedLayer = { setStyle: () => {}, getBounds: () => tmpLayer.getBounds() };
-          } catch(e) { console.warn('Could not render single plot:', e); }
-        } else {
-          const lyr = plotLayersById.get(plotProps.id);
-          if (lyr) highlightLayer(lyr);
-        }
-      };
-      map.on('moveend', onMoveEnd);
-    }
-
-    // Populate bottom card
-    drawerEmptyState.style.display = 'none';
-    drawerPlotInfo.style.display = 'flex';
-
-    cardSite.textContent = `${plotProps.site} · ${plotProps.commune || 'Cambodia'}`;
-    cardFamily.textContent = plotProps.family_id;
-    cardPlot.textContent = plotProps.plot_id;
-    cardArea.textContent = plotProps.area_ha ? plotProps.area_ha.toFixed(2) : '0.00';
-    cardVillage.textContent = plotProps.village;
-    cardCommune.textContent = plotProps.commune || 'N/A';
-    cardYear.textContent = plotProps.year_join || 'N/A';
-    cardCoords.textContent = `${plotProps.lat.toFixed(5)}, ${plotProps.lng.toFixed(5)}`;
-
-    // Populate Traceability Origin Card (Hidden for inspectors/staff, visible for public)
+    // 3. General Public vs Inspector Card & Form Visibility
     const traceOriginCard = document.getElementById('traceability-origin-card');
-    if (traceOriginCard) {
-      traceOriginCard.style.display = currentUser ? 'none' : 'block';
+    const drawerTabBar = document.getElementById('drawer-tab-bar');
+    const drawerScrollBody = document.getElementById('drawer-scrollable-body');
+
+    if (currentUser) {
+      // Inspector Mode: Show 5-Stage Form and tabs
+      if (traceOriginCard) traceOriginCard.style.display = 'none';
+      if (drawerTabBar) drawerTabBar.style.display = 'flex';
+      if (drawerScrollBody) drawerScrollBody.style.display = 'block';
+
+      loadICSInspectionForSelectedPlot();
+      switchDrawerTab(activeDrawerTab || 'tab-farmer');
+    } else {
+      // General Public Mode: Show Traceability Origin Info card
+      if (traceOriginCard) traceOriginCard.style.display = 'block';
+      if (drawerTabBar) drawerTabBar.style.display = 'none';
+      if (drawerScrollBody) drawerScrollBody.style.display = 'none';
     }
     const traceVillage = document.getElementById('trace-village-name');
     const traceLandscape = document.getElementById('trace-landscape-name');
     const traceCoords = document.getElementById('trace-coords');
     const traceStatusBadge = document.getElementById('traceability-status-badge');
-    const traceVarietyPill = document.getElementById('trace-variety-pill');
 
     if (traceVillage) traceVillage.textContent = plotProps.village || 'Community Conservation';
-    if (traceLandscape) traceLandscape.textContent = `${plotProps.site} Wildlife Sanctuary`;
-    if (traceCoords) traceCoords.textContent = `${plotProps.lat.toFixed(5)}, ${plotProps.lng.toFixed(5)}`;
+    if (traceLandscape) traceLandscape.textContent = `${plotProps.site || ''} Wildlife Sanctuary`;
+    if (traceCoords) traceCoords.textContent = coordsStr;
 
     const currentPlotStatus = getPlotInspectionStatus(plotProps, currentSeason);
     if (traceStatusBadge) {
@@ -1082,11 +1017,9 @@
       if (traceBuyerLabel) traceBuyerLabel.textContent = 'IRCC Certified Organic';
     }
 
-    // Update subplots list in drawer
+    // Render subplots for selected plot
     renderSubplotsListForSelectedPlot();
-
-    // Load ICS 2026 inspection workflow data for this plot & farmer
-    loadICSInspectionForSelectedPlot();
+    renderAllStoredSubplotsOnMap();
 
     // Auto-minimize hero discovery card when opening a plot (public)
     const heroCard = document.getElementById('hero-discovery-card');
@@ -1099,12 +1032,39 @@
     const sidebarSelMeta = document.getElementById('sidebar-sel-meta');
 
     if (sidebarSelectedPlotBox) sidebarSelectedPlotBox.style.display = 'block';
-    if (sidebarSelFamily) sidebarSelFamily.textContent = `Family ${plotProps.family_id}`;
+    if (sidebarSelFamily) sidebarSelFamily.textContent = `Family ${plotProps.family_id || ''}`;
     if (sidebarSelArea) sidebarSelArea.textContent = `${plotProps.area_ha ? Number(plotProps.area_ha).toFixed(2) : '0.00'} ha`;
-    if (sidebarSelMeta) sidebarSelMeta.textContent = `Plot ${plotProps.plot_id} · ${plotProps.village || ''}, ${plotProps.site || ''}`;
+    if (sidebarSelMeta) sidebarSelMeta.textContent = `Plot ${plotProps.plot_id || ''} · ${plotProps.village || ''}, ${plotProps.site || ''}`;
 
-    // Open drawer
-    plotDrawer.classList.remove('closed');
+    // 5. Update map layer styles to persistent selection highlight
+    refreshAllPlotStyles();
+
+    const existingLayer = plotLayersById.get(plotProps.id);
+    if (existingLayer) {
+      selectedLayer = existingLayer;
+      try { existingLayer.bringToFront(); } catch(e) {}
+    }
+
+    // 6. Fly to plot on map
+    if (shouldFly && map) {
+      const paddingOptions = window.innerWidth >= 768
+        ? { paddingTopLeft: [480, 50], paddingBottomRight: [50, 50] }
+        : { paddingTopLeft: [20, 20], paddingBottomRight: [20, 20] };
+
+      if (existingLayer && existingLayer.getBounds && typeof existingLayer.getBounds === 'function') {
+        try {
+          map.flyToBounds(existingLayer.getBounds(), {
+            maxZoom: 18,
+            duration: 1.1,
+            ...paddingOptions
+          });
+        } catch(err) {}
+      } else if (latVal !== null && lngVal !== null && !isNaN(latVal) && !isNaN(lngVal)) {
+        try {
+          map.flyTo([latVal, lngVal], 18, { duration: 1.1 });
+        } catch(err) {}
+      }
+    }
   }
 
   // --- Subplot Separation & Labeling Workflow (Fullscreen Mode) ---
@@ -1743,9 +1703,6 @@
     if (subplotCustomVariety) {
       subplotCustomVariety.value = '';
     }
-    if (subplotNotes) {
-      subplotNotes.value = '';
-    }
     if (subplotAreaPct) {
       subplotAreaPct.value = '';
     }
@@ -1824,7 +1781,6 @@
     subplotCode.placeholder = autoName;
     subplotVariety.value = '';
     if (subplotCustomVariety) subplotCustomVariety.value = '';
-    subplotNotes.value = '';
 
     updateSubplotFormConditionalFields();
     validateSubplotAllocation();
@@ -2016,7 +1972,6 @@
     }
 
     const isFallowOrOther = (varietyVal === 'Other' || varietyVal === 'Fallow');
-    const notes = isFallowOrOther ? '' : subplotNotes.value.trim();
     const parentHa = (currentPlot && currentPlot.area_ha) ? currentPlot.area_ha : 1;
 
     const pct = parseFloat(subplotAreaPct.value) || 0;
@@ -2048,7 +2003,6 @@
       editingSubplotInstance.code = code;
       editingSubplotInstance.variety = variety;
       editingSubplotInstance.local_variety_name = localVarietyName;
-      editingSubplotInstance.notes = notes;
       editingSubplotInstance.pct_of_parent = pct;
       editingSubplotInstance.area_ha = areaHa;
       editingSubplotInstance.area_m2 = Math.round(areaHa * 10000);
@@ -2110,7 +2064,6 @@
       code: code,
       variety: variety,
       local_variety_name: localVarietyName,
-      notes: notes,
       area_ha: areaHa,
       area_m2: Math.round(areaHa * 10000),
       pct_of_parent: pct,
@@ -2303,22 +2256,17 @@
       const badges = buildSubplotCardBadges(sp);
 
       card.innerHTML = `
-        <div class="subplot-card-info">
-          <div class="subplot-card-header">
-            <span class="subplot-card-code">${escapeHtml(sp.code)}</span>
-            <span class="variety-tag ${style.class}">${escapeHtml(sp.variety === 'Local Variety' && sp.local_variety_name ? `Local: ${sp.local_variety_name}` : sp.variety)}</span>
-            ${badges}
-          </div>
-          <div class="subplot-card-meta">
-            <b>${sp.area_ha} ha</b> (${sp.pct_of_parent || 0}% of main plot)
-            ${sp.notes ? ` · <span style="font-style: italic; color: var(--text-muted);">${escapeHtml(sp.notes)}</span>` : ''}
-          </div>
+        <div class="subplot-card-content-inline">
+          <span class="subplot-card-code">${escapeHtml(sp.code)}</span>
+          <span class="variety-tag ${style.class}">${escapeHtml(sp.variety === 'Local Variety' && sp.local_variety_name ? `Local: ${sp.local_variety_name}` : sp.variety)}</span>
+          <span class="subplot-area-pill"><b>${sp.area_ha} ha</b> (${sp.pct_of_parent || 0}%)</span>
+          ${badges}
         </div>
         <div class="subplot-card-actions">
           <button class="sp-inspect-btn" title="Record subplot inspection details" data-sp-id="${escapeHtml(sp.id)}">Details</button>
           <button class="sp-harvest-btn" title="Record harvest for this subplot" data-sp-id="${escapeHtml(sp.id)}">🌾 Harvest</button>
           <button class="subplot-action-btn delete-btn" title="Delete this subplot" aria-label="Delete subplot">
-            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2">
               <polyline points="3 6 5 6 21 6"></polyline>
               <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
             </svg>
@@ -4321,9 +4269,9 @@
 
     plotSubplots.forEach((sp) => {
       totalExp += parseFloat(sp.expected_production_kg) || 0;
+      totalSale += parseFloat(sp.expected_sale_kg) || 0;
       if (sp.harvest && sp.harvest.complete === '1') {
         totalAct += parseFloat(sp.harvest.actual_kg) || 0;
-        totalSale += parseFloat(sp.harvest.sale_kg) || 0;
         totalHome += parseFloat(sp.harvest.consume_kg) || 0;
         totalSeed += parseFloat(sp.harvest.seed_kg) || 0;
       }
@@ -4343,9 +4291,32 @@
     summaryBox.style.display = 'block';
   }
 
+  function checkFieldCompleted(el) {
+    if (!el || !el.tagName) return;
+    const tag = el.tagName.toLowerCase();
+    if (tag !== 'input' && tag !== 'select' && tag !== 'textarea') return;
+    if (el.type === 'checkbox' || el.type === 'radio' || el.type === 'button' || el.type === 'submit' || el.type === 'hidden') return;
+
+    const val = (el.value !== undefined && el.value !== null) ? String(el.value).trim() : '';
+    if (val !== '') {
+      el.classList.add('field-completed');
+    } else {
+      el.classList.remove('field-completed');
+    }
+  }
+
+  function updateAllFieldsCompletedStatus(container = document) {
+    if (!container) return;
+    const fields = container.querySelectorAll('input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]), select, textarea');
+    fields.forEach(checkFieldCompleted);
+  }
+
   function setVal(id, val) {
     const el = document.getElementById(id);
-    if (el) el.value = val !== undefined && val !== null ? val : '';
+    if (el) {
+      el.value = val !== undefined && val !== null ? val : '';
+      checkFieldCompleted(el);
+    }
   }
 
   function setChipValues(containerSelector, arrValues) {
@@ -4411,6 +4382,7 @@
     setVal('p-sold-ircc', '');
     setVal('p-seed-kept', '');
     setVal('p-consumed', '');
+    setVal('p-inspection-notes', '');
 
     // Stage 4: Post-Harvest
     setVal('c-have-chamkar', '');
@@ -4624,7 +4596,7 @@
     if (isParcelSaved) {
       setVal('p-inspection-date', insp.inspection_date || '');
       setVal('p-area-ha', insp.area_ha !== undefined ? insp.area_ha : (selectedPlot.area_ha ? selectedPlot.area_ha.toFixed(2) : ''));
-      setVal('p-land-status', insp.land_status || selectedPlot.organic_status || 'Organic');
+      setVal('p-land-status', insp.land_status || selectedPlot.organic_status || '');
       setVal('p-land-situation', insp.land_situation || '1');
       setVal('p-irrigation', insp.irrigation || '1');
       setVal('p-contamination', insp.contamination || '2');
@@ -4643,11 +4615,13 @@
       setVal('p-sold-ircc', insp.sold_ircc !== undefined && insp.sold_ircc !== null ? insp.sold_ircc : '');
       setVal('p-seed-kept', insp.seed_kept !== undefined && insp.seed_kept !== null ? insp.seed_kept : '');
       setVal('p-consumed', insp.consumed !== undefined && insp.consumed !== null ? insp.consumed : '');
+      setVal('p-inspection-notes', insp.inspection_notes || '');
     } else {
       // Blank Form: only physical area and land organic status from GIS layer
       setVal('p-inspection-date', '');
       setVal('p-area-ha', selectedPlot.area_ha ? selectedPlot.area_ha.toFixed(2) : '');
-      setVal('p-land-status', selectedPlot.organic_status || 'Organic');
+      setVal('p-land-status', selectedPlot.organic_status || '');
+      setVal('p-inspection-notes', '');
     }
 
     // 3. Stage 4: Post-Harvest Inspection (Farmer level, off-season)
@@ -4694,6 +4668,7 @@
     trigger('c-rice-barn');
 
     updateParcelHarvestSummary();
+    updateAllFieldsCompletedStatus();
   }
 
   // --- Form Auto-Save Handlers (Strict Hierarchy: Village + Family ID) ---
@@ -4754,7 +4729,7 @@
       plot_id: selectedPlot.plot_id,
       inspection_date: document.getElementById('p-inspection-date')?.value || '',
       area_ha: parseFloat(document.getElementById('p-area-ha')?.value) || selectedPlot.area_ha || 0,
-      land_status: document.getElementById('p-land-status')?.value || 'Organic',
+      land_status: document.getElementById('p-land-status')?.value || '',
       land_situation: document.getElementById('p-land-situation')?.value || '1',
       irrigation: document.getElementById('p-irrigation')?.value || '1',
       contamination: document.getElementById('p-contamination')?.value || '2',
@@ -4773,6 +4748,7 @@
       sold_ircc: document.getElementById('p-sold-ircc')?.value !== '' ? parseFloat(document.getElementById('p-sold-ircc')?.value) || 0 : '',
       seed_kept: document.getElementById('p-seed-kept')?.value !== '' ? parseFloat(document.getElementById('p-seed-kept')?.value) || 0 : '',
       consumed: document.getElementById('p-consumed')?.value !== '' ? parseFloat(document.getElementById('p-consumed')?.value) || 0 : '',
+      inspection_notes: document.getElementById('p-inspection-notes')?.value.trim() || '',
       updated_at: new Date().toISOString()
     };
     saveICSStores();
@@ -4972,7 +4948,6 @@
 
     subplotAreaPct.value = sp.pct_of_parent !== undefined && sp.pct_of_parent !== null ? sp.pct_of_parent : '';
     subplotAreaHa.value = sp.area_ha !== undefined && sp.area_ha !== null ? sp.area_ha : '';
-    subplotNotes.value = sp.notes || '';
 
     // Allocation banner stats
     const parentHa = sp.parent_area_ha || (selectedPlot ? selectedPlot.area_ha : 1.0);
@@ -5240,7 +5215,7 @@
               csvQ(f.is_head_interviewee || '1'), csvQ(f.interviewee_name || ''), csvQ(f.status || 'Existing'),
               csvQ(f.farmer_compliant || 'Compliance'), csvQ((f.trainings || []).join('; ')), f.members_count || 4, f.school_count || 2,
               csvQ(f.has_toilet || '1'), csvQ(f.has_disabled || '2'), f.cattle_count || 0, f.buffalo_count || 0,
-              csvQ(pNum), pArea, csvQ(insp.land_status || parcel.organic_status || 'Organic'), csvQ(insp.land_situation || '1'), csvQ(insp.irrigation || '1'),
+              csvQ(pNum), pArea, csvQ(insp.land_status || parcel.organic_status || ''), csvQ(insp.land_situation || '1'), csvQ(insp.irrigation || '1'),
               csvQ(insp.contamination || '2'), csvQ(insp.avoid_method || ''),
               csvQ(insp.last_prohibited || '2'), csvQ((insp.prohibited_inputs || []).join('; ')),
               csvQ(insp.other_crop === '1' ? 'Yes' : 'No'), csvQ(insp.crop_name || ''),
@@ -5275,7 +5250,7 @@
             csvQ(f.is_head_interviewee || '1'), csvQ(f.interviewee_name || ''), csvQ(f.status || 'Existing'),
             csvQ(f.farmer_compliant || 'Compliance'), csvQ((f.trainings || []).join('; ')), f.members_count || 4, f.school_count || 2,
             csvQ(f.has_toilet || '1'), csvQ(f.has_disabled || '2'), f.cattle_count || 0, f.buffalo_count || 0,
-            csvQ(pNum), pArea, csvQ(insp.land_status || parcel.organic_status || 'Organic'), csvQ(insp.land_situation || '1'), csvQ(insp.irrigation || '1'),
+            csvQ(pNum), pArea, csvQ(insp.land_status || parcel.organic_status || ''), csvQ(insp.land_situation || '1'), csvQ(insp.irrigation || '1'),
             csvQ(insp.contamination || '2'), csvQ(insp.avoid_method || ''),
             csvQ(insp.last_prohibited || '2'), csvQ((insp.prohibited_inputs || []).join('; ')),
             csvQ(insp.other_crop === '1' ? 'Yes' : 'No'), csvQ(insp.crop_name || ''),
@@ -5568,6 +5543,10 @@
 
     applyUserTerritoryFilter();
     updateAuthUI();
+
+    if (selectedPlot && userObj) {
+      selectPlot(selectedPlot, false);
+    }
   }
 
   // --- Auth Modal & Handlers ---

@@ -912,6 +912,7 @@
                 <div class="form-group">
                   <label for="p-land-status">Land / Parcel Organic Status *</label>
                   <select id="p-land-status">
+                    <option value="" selected disabled>-- Select The Status --</option>
                     <option value="Organic">Organic</option>
                     <option value="New Organic">New Organic</option>
                     <option value="Ibis I">Ibis I</option>
@@ -1052,6 +1053,12 @@
                   </div>
                 </div>
               </div>
+
+              <div class="form-section-divider">Plot Level Notes & Observations</div>
+              <div class="form-group" style="margin-top: 6px;">
+                <label for="p-inspection-notes">Inspection Notes (Optional)</label>
+                <textarea id="p-inspection-notes" rows="2" placeholder="Main plot crop condition, land observations..."></textarea>
+              </div>
             </div>
 
             <!-- Stepper Nav Bar -->
@@ -1065,25 +1072,6 @@
                STAGE 3: SUBPLOTS LEVEL (Map Sketches, Subplots & Harvest)
                ===================================================== -->
           <div class="drawer-tab-panel" id="tab-subplots">
-
-            <div class="details-grid">
-              <div class="detail-item">
-                <span class="detail-label">Village</span>
-                <strong id="card-village">Sre Andaol</strong>
-              </div>
-              <div class="detail-item">
-                <span class="detail-label">Commune</span>
-                <strong id="card-commune">Srea Chhuk</strong>
-              </div>
-              <div class="detail-item">
-                <span class="detail-label">Year Joined</span>
-                <strong id="card-year">2022</strong>
-              </div>
-              <div class="detail-item">
-                <span class="detail-label">Coordinates</span>
-                <strong id="card-coords">12.3456, 106.7891</strong>
-              </div>
-            </div>
 
             <!-- Subplots Management Section -->
             <div class="subplots-section">
@@ -1115,7 +1103,7 @@
                 <!-- Dynamically populated with subplots + harvest status -->
               </div>
 
-              <!-- Parcel Total Production Summary (Summed from all subplots) -->
+              <!-- Parcel Total Production Summary (Summed from all subplots in 1 row) -->
               <div id="parcel-harvest-summary" class="parcel-harvest-summary" style="display: none;">
                 <div class="summary-title">📊 Parcel Subplots Production Summary</div>
                 <div class="summary-metrics-grid">
@@ -1124,12 +1112,12 @@
                     <b class="sm-val" id="summary-total-exp">0 kg</b>
                   </div>
                   <div class="summary-metric-item">
-                    <span class="sm-label">Total Actual:</span>
-                    <b class="sm-val highlight" id="summary-total-act">0 kg</b>
+                    <span class="sm-label">Exp. Sale:</span>
+                    <b class="sm-val" id="summary-total-sale">0 kg</b>
                   </div>
                   <div class="summary-metric-item">
-                    <span class="sm-label">For Sale:</span>
-                    <b class="sm-val" id="summary-total-sale">0 kg</b>
+                    <span class="sm-label">Total Actual:</span>
+                    <b class="sm-val highlight" id="summary-total-act">0 kg</b>
                   </div>
                   <div class="summary-metric-item">
                     <span class="sm-label">Household:</span>
@@ -1530,11 +1518,6 @@
                 <input type="number" id="sp-expected-sale" placeholder="e.g. 1000" />
               </div>
             </div>
-          </div>
-
-          <div class="form-group" style="margin-top: 10px;">
-            <label for="subplot-notes">Inspection Notes (Optional)</label>
-            <textarea id="subplot-notes" rows="2" placeholder="Crop condition, observations..."></textarea>
           </div>
         </div>
 

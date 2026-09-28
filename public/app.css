@@ -4892,14 +4892,20 @@ body.role-public #btn-floating-inspector-menu {
 .kpi-pend .kpi-val { color: #60a5fa; }
 
 /* Active Selected Plot Quick Dock */
+#sidebar-selected-plot-box {
+  margin-top: 5px;
+  gap: 6px;
+}
+
 .sidebar-plot-card {
-  background: linear-gradient(145deg, rgba(228, 168, 52, 0.1), rgba(6, 26, 18, 0.85));
-  border: 1px solid rgba(228, 168, 52, 0.35);
-  border-radius: 8px;
-  padding: 7px 9px;
+  background: linear-gradient(145deg, rgba(228, 168, 52, 0.12), rgba(6, 26, 18, 0.9));
+  border: 1px solid rgba(228, 168, 52, 0.4);
+  border-radius: 10px;
+  padding: 10px 12px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
 }
 
 .plot-card-header {
@@ -4909,30 +4915,32 @@ body.role-public #btn-floating-inspector-menu {
 }
 
 .plot-family-label {
-  font-size: 0.78rem;
+  font-size: 0.85rem;
   font-weight: 800;
   color: #fef08a;
+  letter-spacing: 0.01em;
 }
 
 .plot-area-pill {
-  font-size: 0.62rem;
+  font-size: 0.65rem;
   font-weight: 700;
-  background: rgba(228, 168, 52, 0.2);
+  background: rgba(228, 168, 52, 0.22);
   color: #fef08a;
-  padding: 1px 5px;
+  padding: 2px 7px;
   border-radius: 99px;
-  border: 1px solid rgba(228, 168, 52, 0.3);
+  border: 1px solid rgba(228, 168, 52, 0.35);
 }
 
 .plot-card-meta {
-  font-size: 0.68rem;
-  color: #cbd5e1;
+  font-size: 0.72rem;
+  color: #e2e8f0;
+  line-height: 1.25;
 }
 
 .plot-card-actions {
   display: flex;
-  gap: 5px;
-  margin-top: 2px;
+  gap: 6px;
+  margin-top: 4px;
 }
 
 .sidebar-primary-btn {
@@ -4941,9 +4949,9 @@ body.role-public #btn-floating-inspector-menu {
   border: none;
   color: #061a12;
   font-weight: 800;
-  font-size: 0.68rem;
-  padding: 5px 6px;
-  border-radius: 5px;
+  font-size: 0.72rem;
+  padding: 7px 8px;
+  border-radius: 6px;
   cursor: pointer;
   transition: all 0.15s ease;
   white-space: nowrap;
@@ -4951,6 +4959,7 @@ body.role-public #btn-floating-inspector-menu {
 
 .sidebar-primary-btn:hover {
   filter: brightness(1.1);
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.35);
 }
 
 .sidebar-secondary-btn {
@@ -4958,9 +4967,9 @@ body.role-public #btn-floating-inspector-menu {
   border: 1px solid rgba(255, 255, 255, 0.15);
   color: #e2e8f0;
   font-weight: 700;
-  font-size: 0.68rem;
-  padding: 5px 6px;
-  border-radius: 5px;
+  font-size: 0.72rem;
+  padding: 7px 8px;
+  border-radius: 6px;
   cursor: pointer;
   transition: all 0.15s ease;
   white-space: nowrap;
@@ -5048,8 +5057,8 @@ body.role-public #btn-floating-inspector-menu {
    5. TERRITORY BANNER & INSPECTOR FILTERING
    ======================================================== */
 .inspector-territory-banner {
-  margin: 10px 14px 14px 14px;
-  padding: 10px 12px;
+  margin: 6px 10px 4px 10px;
+  padding: 8px 10px;
   background: linear-gradient(135deg, rgba(228, 168, 52, 0.12) 0%, rgba(16, 185, 129, 0.12) 100%);
   border: 1px solid rgba(228, 168, 52, 0.35);
   border-radius: var(--radius-sm, 6px);

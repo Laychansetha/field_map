@@ -54,6 +54,10 @@ def ensure_sqlite_schema():
         add_col_if_missing('farmers', 'farmer_status', "VARCHAR(32) DEFAULT 'Existing'")
         add_col_if_missing('parcels', 'land_status', "VARCHAR(32) DEFAULT 'Organic'")
         add_col_if_missing('plot_season_registrations', 'land_status', "VARCHAR(32) DEFAULT 'Organic'")
+        add_col_if_missing('procurement_receipts', 'variety_id', 'INTEGER')
+        add_col_if_missing('procurement_receipts', 'variety_code', 'VARCHAR(64)')
+        add_col_if_missing('procurement_receipts', 'variety_name', 'VARCHAR(128)')
+        add_col_if_missing('procurement_receipts', 'parcel_id', 'VARCHAR(36)')
         
         conn.commit()
         conn.close()

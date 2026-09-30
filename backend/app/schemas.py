@@ -278,6 +278,19 @@ class InspectionDetailOut(BaseModel):
 # 6. DYNAMIC QUESTION DEFINITIONS
 # ----------------------------------------------------------------------
 
+class QuestionDefinitionCreate(BaseModel):
+    template_code: str = "ICS_ANNUAL_INSPECTION"
+    stage_number: int
+    section_name: str
+    field_key: str
+    label_en: str
+    label_kh: Optional[str] = None
+    input_type: str = "text"
+    options: Optional[List[Dict[str, Any]]] = None
+    validation_rules: Optional[Dict[str, Any]] = None
+    conditional_display: Optional[Dict[str, Any]] = None
+    display_order: int = 1
+
 class QuestionDefinitionOut(BaseModel):
     id: int
     template_code: str
@@ -317,12 +330,15 @@ class HarvestBagOut(BaseModel):
 class ProcurementReceiptCreate(BaseModel):
     season_code: str
     farmer_id: str
-    buying_station_name: str
+    parcel_id: Optional[str] = None
+    variety_code: Optional[str] = None
+    variety_name: Optional[str] = None
+    buying_station_name: str = "IRCC Community Station"
     purchase_date: date
-    total_bags: int
+    total_bags: int = 0
     total_kg: float
-    base_price_riel: float
-    organic_premium_riel: float
+    base_price_riel: float = 0.0
+    organic_premium_riel: float = 0.0
     payment_status: str = "paid"
 
 class ProcurementReceiptOut(BaseModel):
@@ -332,6 +348,9 @@ class ProcurementReceiptOut(BaseModel):
     farmer_id: str
     farmer_name: Optional[str] = None
     village_name: Optional[str] = None
+    parcel_id: Optional[str] = None
+    variety_code: Optional[str] = None
+    variety_name: Optional[str] = None
     buying_station_name: str
     purchase_date: date
     total_bags: int
@@ -341,6 +360,16 @@ class ProcurementReceiptOut(BaseModel):
 
     class Config:
         from_attributes = True
+
+class ActualPurchaseUploadResult(BaseModel):
+    season_code: str
+    source_filename: str
+    total_rows: int
+    success_count: int
+    error_count: int
+    total_purchased_kg: float
+    summary_by_variety: Dict[str, float]
+    errors: List[Dict[str, Any]]
 
 class WarehouseLotOut(BaseModel):
     id: str

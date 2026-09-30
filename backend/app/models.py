@@ -438,6 +438,10 @@ class ProcurementReceipt(Base):
     receipt_code = Column(String(64), unique=True, nullable=False, index=True) # e.g. 'BUY-2026-PV-0012'
     season_id = Column(Integer, ForeignKey("seasons.id"), nullable=False, index=True)
     farmer_id = Column(String(36), ForeignKey("farmers.id"), nullable=False, index=True)
+    parcel_id = Column(String(36), ForeignKey("parcels.id"), nullable=True, index=True)
+    variety_id = Column(Integer, ForeignKey("rice_varieties.id"), nullable=True, index=True)
+    variety_code = Column(String(64), nullable=True)
+    variety_name = Column(String(128), nullable=True)
     buyer_id = Column(String(36), ForeignKey("users.id"), nullable=True)
     buying_station_name = Column(String(128), nullable=False)
     purchase_date = Column(Date, nullable=False)
@@ -451,6 +455,8 @@ class ProcurementReceipt(Base):
     
     season = relationship("Season", back_populates="procurement_receipts")
     farmer = relationship("Farmer", back_populates="procurement_receipts")
+    parcel = relationship("Parcel")
+    variety = relationship("RiceVariety")
     buyer = relationship("User", back_populates="procurement_receipts")
 
 class WarehouseLot(Base):

@@ -599,19 +599,26 @@
                 <div class="prod-panel-title">Production &amp; Harvest Traceability</div>
                 <div class="origin-prod-grid">
                   <div class="prod-metric-card">
-                    <span class="prod-metric-label">Expected Production</span>
-                    <strong class="prod-metric-value" id="trace-expected-prod">--</strong>
+                    <span class="prod-metric-label">Plot Size</span>
+                    <strong class="prod-metric-value" id="trace-plot-size">-- ha</strong>
+                    <span class="prod-metric-sub">GIS Verified</span>
+                  </div>
+                  <div class="prod-metric-card">
+                    <span class="prod-metric-label">Estimated Production</span>
+                    <strong class="prod-metric-value" id="trace-expected-prod">-- kg</strong>
                     <span class="prod-metric-sub" id="trace-expected-rate">Est. 1.5 MT/ha</span>
                   </div>
                   <div class="prod-metric-card">
-                    <span class="prod-metric-label">Actual Harvest</span>
-                    <strong class="prod-metric-value" id="trace-actual-harvest">--</strong>
-                    <span class="prod-metric-sub" id="trace-harvest-status">Season 2026</span>
+                    <span class="prod-metric-label">Estimated Sale to IRCC</span>
+                    <strong class="prod-metric-value" id="trace-expected-sales">-- kg</strong>
+                    <span class="prod-metric-sub">Target Volume</span>
                   </div>
-                  <div class="prod-metric-card">
-                    <span class="prod-metric-label">Certified Organic Sold</span>
-                    <strong class="prod-metric-value" id="trace-sold-volume">--</strong>
-                    <span class="prod-metric-sub" id="trace-buyer-label">IRCC Organic</span>
+                  <div class="prod-metric-card prod-metric-card-wide">
+                    <span class="prod-metric-label">Actual Rice Sold to IRCC (kg) by Variety</span>
+                    <strong class="prod-metric-value" id="trace-sold-volume">0.0 kg</strong>
+                    <div class="variety-breakdown-list" id="trace-variety-breakdown">
+                      <span class="variety-item-pill">Phka Rumduol: -- kg</span>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -1850,6 +1857,9 @@
         <button type="button" class="admin-nav-btn" id="nav-btn-gis" data-admin-tab="admin-tab-gis">
           <span>🗺️ Annual GIS Updates</span>
         </button>
+        <button type="button" class="admin-nav-btn" id="nav-btn-purchases" data-admin-tab="admin-tab-purchases">
+          <span>🌾 Paddy Purchases Upload</span>
+        </button>
       </div>
 
       <div class="admin-workspace-body">
@@ -2019,6 +2029,34 @@
             </button>
           </div>
         </div>
+
+        <!-- Tab 4: Actual Paddy Purchases Ingestion -->
+        <div class="admin-tab-panel" id="admin-tab-purchases" style="display: none;">
+          <div class="admin-gis-launcher-card">
+            <h4>Upload Actual IRCC Paddy Purchases (Excel / CSV)</h4>
+            <p>Upload buying station receipt data (.xlsx, .xls, or .csv) to update actual organic sales by variety per farmer and plot.</p>
+
+            <div class="purchase-upload-controls" style="margin-top: 16px; display: flex; flex-direction: column; gap: 12px; max-width: 500px;">
+              <a href="/api/v1/traceability/procurements/download-template-csv" download class="secondary-btn" style="align-self: flex-start; text-decoration: none;">
+                📥 Download Purchase Template CSV
+              </a>
+              
+              <div class="form-group" style="margin-top: 6px;">
+                <label for="purchase-file-input" style="font-weight: 600; font-size: 0.85rem; margin-bottom: 6px; display: block; color: #e2e8f0;">Select Excel (.xlsx) or CSV File:</label>
+                <input type="file" id="purchase-file-input" accept=".xlsx,.xls,.csv" class="sidebar-select" style="padding: 8px; width: 100%; color: #fff; background: rgba(0,0,0,0.3);" />
+              </div>
+
+              <button type="button" class="primary-btn" id="btn-upload-purchases" style="align-self: flex-start; margin-top: 6px;">
+                <span>📤 Upload Paddy Purchases</span>
+              </button>
+            </div>
+
+            <div id="purchase-upload-result-container" style="margin-top: 20px; display: none; padding: 16px; background: rgba(15, 23, 42, 0.7); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px;">
+              <h5 id="purchase-result-title" style="margin-bottom: 8px; font-size: 1rem; color: #4ade80;">Upload Result</h5>
+              <div id="purchase-result-body" style="font-size: 0.88rem; line-height: 1.5; color: #cbd5e1;"></div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -2028,7 +2066,7 @@
 
   </div><!-- /#app-container -->
 
-  <script src="app.js?v=2026.33"></script>
+  <script src="app.js?v=2026.36"></script>
 </body>
 </html>
 

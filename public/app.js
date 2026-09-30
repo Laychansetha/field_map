@@ -10,6 +10,7 @@
   // --- State Variables ---
   let map = null;
   let satelliteLayer = null;
+  let googleHybridLayer = null;
   let osmLayer = null;
   let currentBasemap = 'sat';
 
@@ -30,19 +31,13 @@
   const DIVISION_LINES_STORAGE_KEY = 'ibis_plot_division_lines_v1';
 
   // --- Automated One-Time Clean Reset Check for Browser Clients ---
-  const DB_CLEAN_VERSION = 'clean_fresh_2026_v1';
+  const DB_CLEAN_VERSION = 'clean_fresh_2026_v5';
   if (localStorage.getItem('ibis_clean_reset') !== DB_CLEAN_VERSION) {
-    const keysToPurge = [
-      'ibis_inspection_subplots_v1',
-      'ibis_plot_division_lines_v1',
-      'ibis_farmers_v2',
-      'ibis_ics_2026_inspections_v2',
-      'ibis_farmers_v1',
-      'ibis_inspections_v1',
-      'ibis_offline_inspections',
-      'ibis_offline_queue'
-    ];
-    keysToPurge.forEach((k) => localStorage.removeItem(k));
+    Object.keys(localStorage).forEach((k) => {
+      if (k.startsWith('ibis_') && k !== 'ibis_auth_user') {
+        localStorage.removeItem(k);
+      }
+    });
     localStorage.setItem('ibis_clean_reset', DB_CLEAN_VERSION);
     console.log('[System] All client testing data successfully purged for fresh deployment.');
   }
@@ -242,11 +237,11 @@
   // --- Map Initialization ---
   function initMap() {
     map = L.map('map', {
+      preferCanvas: true,
       zoomControl: false,
       attributionControl: false,
-      maxZoom: 19,
+      maxZoom: 21,
       minZoom: 6
-      // No preferCanvas - use default SVG renderer for reliability
     }).setView([13.7, 105.8], 8);
 
     // Position zoom buttons in bottom-right corner so they never overlap the left drawer or top search
@@ -256,16 +251,32 @@
     map.createPane('subplotsPane');
     map.getPane('subplotsPane').style.zIndex = 450;
 
-    // Satellite basemap (ESRI World Imagery)
+    // Primary Satellite basemap (ESRI World Imagery with maxNativeZoom: 17 to scale up smoothly past level 17)
     satelliteLayer = L.tileLayer(
       'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-      { maxZoom: 19, opacity: 1 }
+      {
+        maxNativeZoom: 17,
+        maxZoom: 21,
+        opacity: 1
+      }
     ).addTo(map);
+
+    // High-Resolution Google Hybrid Satellite Layer
+    googleHybridLayer = L.tileLayer(
+      'https://mt1.google.com/vt/lyrs=y&x={x}&y={y}&z={z}',
+      {
+        maxNativeZoom: 19,
+        maxZoom: 21
+      }
+    );
 
     // Street / Terrain basemap (OpenStreetMap)
     osmLayer = L.tileLayer(
       'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-      { maxZoom: 19 }
+      {
+        maxNativeZoom: 18,
+        maxZoom: 21
+      }
     );
 
     // Layer groups for rendered subplots and separation lines
@@ -977,45 +988,45 @@
     }
 
     // Populate Production, Harvest & Commercial Traceability metrics
+    const tracePlotSize = document.getElementById('trace-plot-size');
     const traceExpectedProd = document.getElementById('trace-expected-prod');
     const traceExpectedRate = document.getElementById('trace-expected-rate');
-    const traceActualHarvest = document.getElementById('trace-actual-harvest');
-    const traceHarvestStatus = document.getElementById('trace-harvest-status');
+    const traceExpectedSales = document.getElementById('trace-expected-sales');
     const traceSoldVolume = document.getElementById('trace-sold-volume');
-    const traceBuyerLabel = document.getElementById('trace-buyer-label');
+    const traceVarietyBreakdown = document.getElementById('trace-variety-breakdown');
 
     const areaHa = Number(plotProps.area_ha) || 0;
-    const estYieldMT = areaHa > 0 ? (areaHa * 1.5).toFixed(2) : '0.00';
-    if (traceExpectedProd) traceExpectedProd.textContent = `${estYieldMT} MT`;
-    if (traceExpectedRate) traceExpectedRate.textContent = `${areaHa.toFixed(2)} ha @ 1.5 MT/ha`;
+    const estYieldKg = Math.round(areaHa * 1500);
+    const estSalesKg = Math.round(estYieldKg * 0.8);
 
-    // Check if subplots or inspection have recorded harvest
-    const plotSubplots = subplots.filter(s => s.parent_plot_id === plotProps.id);
-    let totalHarvestKg = 0;
-    let totalSoldKg = 0;
-    let hasHarvestRecord = false;
+    if (tracePlotSize) tracePlotSize.textContent = `${areaHa.toFixed(2)} ha`;
+    if (traceExpectedProd) traceExpectedProd.textContent = `${estYieldKg.toLocaleString('en-US')} kg`;
+    if (traceExpectedRate) traceExpectedRate.textContent = `Est. 1.5 MT/ha`;
+    if (traceExpectedSales) traceExpectedSales.textContent = `${estSalesKg.toLocaleString('en-US')} kg`;
 
-    plotSubplots.forEach(sp => {
-      if (sp.harvest_kg) {
-        totalHarvestKg += Number(sp.harvest_kg) || 0;
-        hasHarvestRecord = true;
-      }
-      if (sp.sold_kg) {
-        totalSoldKg += Number(sp.sold_kg) || 0;
-      }
-    });
-
-    if (hasHarvestRecord && totalHarvestKg > 0) {
-      if (traceActualHarvest) traceActualHarvest.textContent = `${(totalHarvestKg / 1000).toFixed(2)} tons`;
-      if (traceHarvestStatus) traceHarvestStatus.textContent = 'Harvest Verified';
-      if (traceSoldVolume) traceSoldVolume.textContent = totalSoldKg > 0 ? `${(totalSoldKg / 1000).toFixed(2)} tons` : 'In IRCC Storage';
-      if (traceBuyerLabel) traceBuyerLabel.textContent = '100% Traceable';
-    } else {
-      if (traceActualHarvest) traceActualHarvest.textContent = 'Pending Harvest';
-      if (traceHarvestStatus) traceHarvestStatus.textContent = `Season ${currentSeason}`;
-      if (traceSoldVolume) traceSoldVolume.textContent = 'Allocated';
-      if (traceBuyerLabel) traceBuyerLabel.textContent = 'IRCC Certified Organic';
-    }
+    // Fetch actual sales by variety from backend summary endpoint if available
+    fetch(`/api/v1/traceability/plot/${encodeURIComponent(plotProps.id)}/summary`)
+      .then(res => res.ok ? res.json() : null)
+      .then(summaryData => {
+        if (summaryData) {
+          if (traceSoldVolume) traceSoldVolume.textContent = `${(summaryData.total_actual_sold_kg || 0).toLocaleString('en-US')} kg`;
+          if (traceVarietyBreakdown) {
+            if (summaryData.actual_sales_by_variety && summaryData.actual_sales_by_variety.length > 0) {
+              traceVarietyBreakdown.innerHTML = summaryData.actual_sales_by_variety.map(v => 
+                `<span class="variety-item-pill" style="display: inline-block; background: rgba(16, 185, 129, 0.2); border: 1px solid rgba(16, 185, 129, 0.4); color: #6ee7b7; padding: 2px 8px; border-radius: 12px; font-size: 0.78rem; margin-right: 4px; margin-top: 4px;">🌾 ${v.variety_name}: ${v.total_kg.toLocaleString('en-US')} kg</span>`
+              ).join('');
+            } else {
+              traceVarietyBreakdown.innerHTML = `<span class="variety-item-pill" style="display: inline-block; opacity: 0.7; font-size: 0.78rem; color: #94a3b8;">Phka Rumduol: 0 kg (Pending Harvest Delivery)</span>`;
+            }
+          }
+        }
+      })
+      .catch(() => {
+        if (traceSoldVolume) traceSoldVolume.textContent = `0 kg`;
+        if (traceVarietyBreakdown) {
+          traceVarietyBreakdown.innerHTML = `<span class="variety-item-pill" style="display: inline-block; opacity: 0.7; font-size: 0.78rem; color: #94a3b8;">Phka Rumduol: 0 kg</span>`;
+        }
+      });
 
     // Render subplots for selected plot
     renderSubplotsListForSelectedPlot();
@@ -2397,10 +2408,15 @@
     showToast(`Exported ${features.length} inspection features to GeoJSON`);
   }
 
+  let searchDebounceTimer = null;
+
   // --- Event Bindings ---
   function bindEvents() {
-    // Quick Search Input
-    quickSearchInput.addEventListener('input', handleQuickSearch);
+    // Quick Search Input with 120ms debounce for rapid typing
+    quickSearchInput.addEventListener('input', () => {
+      clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = setTimeout(handleQuickSearch, 120);
+    });
     quickSearchInput.addEventListener('focus', () => {
       if (quickSearchInput.value.trim().length > 0) {
         searchSuggestions.style.display = 'block';
@@ -3505,17 +3521,23 @@
   // --- Basemap Switcher ---
   function toggleBasemap() {
     if (currentBasemap === 'sat') {
-      map.removeLayer(satelliteLayer);
-      osmLayer.addTo(map);
+      if (satelliteLayer && map.hasLayer(satelliteLayer)) map.removeLayer(satelliteLayer);
+      if (googleHybridLayer) googleHybridLayer.addTo(map);
+      currentBasemap = 'hybrid';
+      if (layerLabel) layerLabel.textContent = 'Hybrid';
+      showToast('Switched to High-Res Google Hybrid Satellite');
+    } else if (currentBasemap === 'hybrid') {
+      if (googleHybridLayer && map.hasLayer(googleHybridLayer)) map.removeLayer(googleHybridLayer);
+      if (osmLayer) osmLayer.addTo(map);
       currentBasemap = 'osm';
-      layerLabel.textContent = 'Map';
+      if (layerLabel) layerLabel.textContent = 'Map';
       showToast('Switched to Street / Terrain map');
     } else {
-      map.removeLayer(osmLayer);
-      satelliteLayer.addTo(map);
+      if (osmLayer && map.hasLayer(osmLayer)) map.removeLayer(osmLayer);
+      if (satelliteLayer) satelliteLayer.addTo(map);
       currentBasemap = 'sat';
-      layerLabel.textContent = 'Sat';
-      showToast('Switched to Satellite imagery');
+      if (layerLabel) layerLabel.textContent = 'Sat';
+      showToast('Switched to Esri World Satellite imagery');
     }
   }
 
@@ -5512,6 +5534,7 @@
   }
 
   function setAuthUser(userObj) {
+    const isLogout = !userObj;
     currentUser = userObj;
     try {
       if (userObj) {
@@ -5526,29 +5549,67 @@
     if (authPinInput) authPinInput.value = '';
     if (authPasswordInput) authPasswordInput.value = '';
 
-    // ALWAYS start with a clean, unselected plot state on login / user change
+    // ALWAYS start with a clean, unselected plot state on login / user change / logout
     if (plotDrawer) plotDrawer.classList.add('closed');
     const modalAdminWorkspace = document.getElementById('modal-admin-workspace');
     if (modalAdminWorkspace) modalAdminWorkspace.style.display = 'none';
     const modalAdminGis = document.getElementById('modal-admin-gis');
     if (modalAdminGis) modalAdminGis.style.display = 'none';
+    if (subplotModal) subplotModal.style.display = 'none';
+    if (subplotHarvestModal) subplotHarvestModal.style.display = 'none';
 
     // Cancel drawing session if active
     if (isDrawingSubplot) {
       cancelSubplotDrawing();
     }
 
-    // Unselect active plot & clear highlights
+    // Unselect active plot & clear highlights completely FIRST
     selectedLayer = null;
     selectedPlot = null;
     resetAllInspectionForms();
 
-    // Hide sidebar Current Plot dock on login
+    // Reset all filter panel dropdowns & search inputs on logout
+    if (isLogout) {
+      if (quickSearchInput) quickSearchInput.value = '';
+      const sidebarSearchInput = document.getElementById('sidebar-search-input');
+      if (sidebarSearchInput) sidebarSearchInput.value = '';
+      if (searchSuggestions) searchSuggestions.style.display = 'none';
+
+      if (filterSite) {
+        filterSite.value = '';
+        try { onSiteChanged(); } catch (e) {}
+      }
+      if (filterPanel) filterPanel.classList.add('closed');
+      if (btnToggleFilters) btnToggleFilters.classList.remove('active');
+    }
+
+    // Hide sidebar Current Plot dock on login / logout
     const sidebarSelectedPlotBox = document.getElementById('sidebar-selected-plot-box');
     if (sidebarSelectedPlotBox) sidebarSelectedPlotBox.style.display = 'none';
 
-    applyUserTerritoryFilter();
+    // Apply territory filter (restores all 6,427 plots when currentUser is null)
+    applyUserTerritoryFilter(true);
     updateAuthUI();
+
+    // Immediately adjust Leaflet size and smoothly reset map camera to full nationwide bounds
+    if (isLogout && map) {
+      map.invalidateSize();
+      if (geojsonLayer && typeof geojsonLayer.getBounds === 'function') {
+        try {
+          const bounds = geojsonLayer.getBounds();
+          if (bounds && bounds.isValid()) {
+            map.flyToBounds(bounds, { padding: [30, 30], maxZoom: 14, duration: 0.5 });
+          } else {
+            map.setView([13.7, 105.8], 8, { animate: false });
+          }
+        } catch (e) {
+          map.setView([13.7, 105.8], 8, { animate: false });
+        }
+      } else {
+        map.setView([13.7, 105.8], 8, { animate: false });
+      }
+      showToast('🚪 Signed out. General User view restored.');
+    }
   }
 
   // --- Auth Modal & Handlers ---
@@ -6115,7 +6176,8 @@
     const tabs = [
       { btnId: 'nav-btn-inspectors', panelId: 'admin-tab-inspectors' },
       { btnId: 'nav-btn-export', panelId: 'admin-tab-export' },
-      { btnId: 'nav-btn-gis', panelId: 'admin-tab-gis' }
+      { btnId: 'nav-btn-gis', panelId: 'admin-tab-gis' },
+      { btnId: 'nav-btn-purchases', panelId: 'admin-tab-purchases' }
     ];
 
     tabs.forEach(({ btnId, panelId }) => {
@@ -6134,6 +6196,70 @@
         });
       }
     });
+
+    // Upload Paddy Purchases Event Handler
+    const btnUploadPurchases = document.getElementById('btn-upload-purchases');
+    const purchaseFileInput = document.getElementById('purchase-file-input');
+    const purchaseResultContainer = document.getElementById('purchase-upload-result-container');
+    const purchaseResultBody = document.getElementById('purchase-result-body');
+
+    if (btnUploadPurchases && purchaseFileInput) {
+      btnUploadPurchases.addEventListener('click', () => {
+        const file = purchaseFileInput.files[0];
+        if (!file) {
+          showToast('⚠️ Please select an Excel (.xlsx) or CSV file first');
+          return;
+        }
+
+        const formData = new FormData();
+        formData.append('file', file);
+
+        btnUploadPurchases.disabled = true;
+        btnUploadPurchases.innerHTML = '<span>⏳ Uploading &amp; Validating...</span>';
+
+        fetch('/api/v1/traceability/procurements/upload-excel?season_code=2026', {
+          method: 'POST',
+          body: formData
+        })
+        .then(res => {
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return res.json();
+        })
+        .then(resData => {
+          btnUploadPurchases.disabled = false;
+          btnUploadPurchases.innerHTML = '<span>📤 Upload Paddy Purchases</span>';
+          if (purchaseResultContainer) purchaseResultContainer.style.display = 'block';
+          
+          let varietySummaryHtml = '';
+          if (resData.summary_by_variety) {
+            varietySummaryHtml = Object.entries(resData.summary_by_variety)
+              .map(([v, kg]) => `<li><b>${v}:</b> ${kg.toLocaleString('en-US')} kg</li>`)
+              .join('');
+          }
+
+          if (purchaseResultBody) {
+            purchaseResultBody.innerHTML = `
+              <div style="color: #4ade80; font-weight: 600; margin-bottom: 6px;">✅ File Upload Successful!</div>
+              <div><b>Source File:</b> ${resData.source_filename}</div>
+              <div><b>Total Rows Processed:</b> ${resData.total_rows} | <b>Success:</b> ${resData.success_count} | <b>Failed:</b> ${resData.error_count}</div>
+              <div><b>Total Purchased Paddy:</b> ${resData.total_purchased_kg.toLocaleString('en-US')} kg</div>
+              ${varietySummaryHtml ? `<div style="margin-top: 8px;"><b>Purchases by Rice Variety:</b><ul>${varietySummaryHtml}</ul></div>` : ''}
+              ${resData.errors && resData.errors.length > 0 ? `<div style="color: #f87171; margin-top: 8px;"><b>Row Errors (${resData.errors.length}):</b><br/>${resData.errors.map(e => `Row ${e.row}: ${e.reason}`).join('<br/>')}</div>` : ''}
+            `;
+          }
+          showToast('✅ Paddy Purchases uploaded successfully');
+        })
+        .catch(err => {
+          btnUploadPurchases.disabled = false;
+          btnUploadPurchases.innerHTML = '<span>📤 Upload Paddy Purchases</span>';
+          if (purchaseResultContainer) purchaseResultContainer.style.display = 'block';
+          if (purchaseResultBody) {
+            purchaseResultBody.innerHTML = `<span style="color: #f87171;">❌ Upload failed: ${err.message}</span>`;
+          }
+          showToast('❌ Failed to upload paddy purchase file');
+        });
+      });
+    }
 
     // Launch GIS Workbench button from inside workspace
     const btnLaunchGis = document.getElementById('btn-launch-gis-workbench');
